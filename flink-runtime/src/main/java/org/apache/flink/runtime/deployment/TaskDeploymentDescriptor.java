@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.deployment;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.blob.BlobService;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
@@ -25,7 +28,12 @@ import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.state.TaskStateHandles;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.Collection;
 
@@ -36,11 +44,43 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
 
-	/** Serialized job information */
-	private final SerializedValue<JobInformation> serializedJobInformation;
+	/** The log object used for debugging. */
+	private static final Logger LOG = LoggerFactory.getLogger(TaskDeploymentDescriptor.class);
 
-	/** Serialized task information */
-	private final SerializedValue<TaskInformation> serializedTaskInformation;
+	/**
+	 * Maximum size of the serialized job and task information fields inside
+	 * {@link #data} before they will be offloaded to the blob server instead
+	 * of serializing them with the {@link TaskDeploymentDescriptor} object and
+	 * sending them inside RPCs directly (use 1 KiB for now).
+	 */
+	public static final int MAX_SHORT_MESSAGE_SIZE = 1 * 1024;
+
+	private static class TaskDeploymentDescriptorData implements Serializable {
+		private static final long serialVersionUID = -6762050730992879625L;
+
+		/**
+		 * Serialized job information
+		 */
+		final SerializedValue<JobInformation> serializedJobInformation;
+
+		/**
+		 * Serialized task information
+		 */
+		final SerializedValue<TaskInformation> serializedTaskInformation;
+
+		TaskDeploymentDescriptorData(
+			SerializedValue<JobInformation> serializedJobInformation,
+			SerializedValue<TaskInformation> serializedTaskInformation) {
+
+			this.serializedJobInformation =
+				Preconditions.checkNotNull(serializedJobInformation);
+			this.serializedTaskInformation =
+				Preconditions.checkNotNull(serializedTaskInformation);
+		}
+	}
+
+	/** Potentially big data which may be externalized. */
+	private TaskDeploymentDescriptorData data;
 
 	/** The ID referencing the attempt to execute the task. */
 	private final ExecutionAttemptID executionId;
@@ -78,8 +118,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
-		this.serializedJobInformation = Preconditions.checkNotNull(serializedJobInformation);
-		this.serializedTaskInformation = Preconditions.checkNotNull(serializedTaskInformation);
+		this.data = new TaskDeploymentDescriptorData(serializedJobInformation,
+			serializedTaskInformation);
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
 
@@ -104,7 +144,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	 * @return serialized job information
 	 */
 	public SerializedValue<JobInformation> getSerializedJobInformation() {
-		return serializedJobInformation;
+		return data.serializedJobInformation;
 	}
 
 	/**
@@ -113,7 +153,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	 * @return serialized task information
 	 */
 	public SerializedValue<TaskInformation> getSerializedTaskInformation() {
-		return serializedTaskInformation;
+		return data.serializedTaskInformation;
 	}
 
 	public ExecutionAttemptID getExecutionAttemptId() {
@@ -159,6 +199,62 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	/**
+ 	 * Tries to store big data from {@link TaskDeploymentDescriptorData#serializedJobInformation}
+ 	 * and {@link TaskDeploymentDescriptorData#serializedTaskInformation} in the given
+ 	 * <tt>blobServer</tt> instead of sending it in an RPC.
+ 	 *
+ 	 * @param blobServer     the blob server to use
+	 * @param jobId          ID of the job this task belongs to
+	 * @return whether the data has been offloaded or not
+ 	 */
+	public boolean tryOffLoadBigData(final BlobServer blobServer, final JobID jobId) {
+		// more than MAX_SHORT_MESSAGE_SIZE?
+		if (data.serializedJobInformation.getByteArray().length +
+			data.serializedTaskInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
+
+			// write out data and re-set the data object
+			try {
+				final String fileKey = getOffloadedFileName();
+				blobServer.putObject(data, jobId, fileKey);
+				data = null;
+				return true;
+			} catch (IOException e) {
+				LOG.warn("Failed to offload data to BLOB store", e);
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Loads externalized data from {@link #tryOffLoadBigData(BlobServer, JobID)} back to the
+	 * object.
+	 *
+	 * @param blobService     the blob store to use
+	 * @param jobId          ID of the job this task belongs to
+	 *
+	 * @throws IOException
+	 * @throws ClassNotFoundException
+	 * 		Class of a serialized object cannot be found.
+	 */
+	public void loadBigData(final BlobService blobService, final JobID jobId)
+			throws IOException, ClassNotFoundException {
+		if (data == null) {
+			final String fileKey = getOffloadedFileName();
+			final String dataFile = blobService.getURL(jobId, fileKey).getFile();
+			final ObjectInputStream ois = new ObjectInputStream(new FileInputStream(dataFile));
+			data = (TaskDeploymentDescriptorData) ois.readObject();
+			// delete from local cache
+			// TODO: keep around for restarts?
+			blobService.delete(jobId, fileKey);
+		}
+	}
+
+	private final String getOffloadedFileName() {
+		return String.format("TaskDeploymentDescriptor-%s.dat",
+			executionId.toString());
 	}
 
 	@Override
