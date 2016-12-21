@@ -82,6 +82,15 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** Potentially big data which may be externalized. */
 	private TaskDeploymentDescriptorData data;
 
+	/**
+	 * The ID referencing the job this task belongs to.
+	 *
+	 * <p>NOTE: this is redundant to the information stored in {@link
+	 * TaskDeploymentDescriptorData#serializedJobInformation} but needed in
+	 * order to restore offloaded data.</p>
+	 */
+	private final JobID jobId;
+
 	/** The ID referencing the attempt to execute the task. */
 	private final ExecutionAttemptID executionId;
 
@@ -107,6 +116,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private final TaskStateHandles taskStateHandles;
 
 	public TaskDeploymentDescriptor(
+			JobID jobId,
 			SerializedValue<JobInformation> serializedJobInformation,
 			SerializedValue<TaskInformation> serializedTaskInformation,
 			ExecutionAttemptID executionAttemptId,
@@ -118,6 +128,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
+		this.jobId = jobId;
 		this.data = new TaskDeploymentDescriptorData(serializedJobInformation,
 			serializedTaskInformation);
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
@@ -207,10 +218,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
  	 * <tt>blobServer</tt> instead of sending it in an RPC.
  	 *
  	 * @param blobServer     the blob server to use
-	 * @param jobId          ID of the job this task belongs to
 	 * @return whether the data has been offloaded or not
  	 */
-	public boolean tryOffLoadBigData(final BlobServer blobServer, final JobID jobId) {
+	public boolean tryOffLoadBigData(final BlobServer blobServer) {
 		// more than MAX_SHORT_MESSAGE_SIZE?
 		if (data.serializedJobInformation.getByteArray().length +
 			data.serializedTaskInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
@@ -229,17 +239,16 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	}
 
 	/**
-	 * Loads externalized data from {@link #tryOffLoadBigData(BlobServer, JobID)} back to the
+	 * Loads externalized data from {@link #tryOffLoadBigData(BlobServer)} back to the
 	 * object.
 	 *
 	 * @param blobService     the blob store to use
-	 * @param jobId          ID of the job this task belongs to
 	 *
 	 * @throws IOException
 	 * @throws ClassNotFoundException
 	 * 		Class of a serialized object cannot be found.
 	 */
-	public void loadBigData(final BlobService blobService, final JobID jobId)
+	public void loadBigData(final BlobService blobService)
 			throws IOException, ClassNotFoundException {
 		if (data == null) {
 			final String fileKey = getOffloadedFileName();

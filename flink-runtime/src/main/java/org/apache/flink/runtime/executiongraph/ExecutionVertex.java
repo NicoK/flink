@@ -706,6 +706,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 
 		return new TaskDeploymentDescriptor(
+			getJobId(),
 			serializedJobInformation,
 			serializedJobVertexInformation,
 			executionId,
