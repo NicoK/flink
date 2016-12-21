@@ -225,6 +225,11 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		if (data.serializedJobInformation.getByteArray().length +
 			data.serializedTaskInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
 
+			if (blobServer == null) {
+				LOG.warn("No BLOB store available: unable to offload data!");
+				return false;
+			}
+
 			// write out data and re-set the data object
 			try {
 				final String fileKey = getOffloadedFileName();
