@@ -366,6 +366,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				slot,
 				taskState,
 				attemptNumber);
+			deployment.tryOffLoadBigData(vertex.getExecutionGraph().getBlobServer());
 
 			// register this execution at the execution graph, to receive call backs
 			vertex.getExecutionGraph().registerExecution(this);

@@ -1299,6 +1299,7 @@ class JobManager(
           restartStrategy,
           jobMetrics,
           numSlots,
+          libraryCacheManager.getBlobService.asInstanceOf[BlobServer],
           log.logger)
         
         if (registerNewGraph) {

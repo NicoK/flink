@@ -268,6 +268,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	private final String getOffloadedFileName() {
 		return String.format("TaskDeploymentDescriptor-%s.dat",
+			// TODO: use vertex ID for TaskInformation, share among multiple parallel instances of this task
+			// TODO: share JobInformation among tasks
 			executionId.toString());
 	}
 

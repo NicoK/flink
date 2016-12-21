@@ -36,6 +36,7 @@ import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
@@ -190,6 +191,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** Registered KvState instances reported by the TaskManagers. */
 	private final KvStateLocationRegistry kvStateLocationRegistry;
 
+	/** Blob server reference for offloading large RPC messages. */
+	private final BlobServer blobServer;
+
 	// ------ Configuration of the Execution -------
 
 	/** Flag to indicate whether the scheduler may queue tasks for execution, or needs to be able
@@ -258,7 +262,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			Collections.<URL>emptyList(),
 			slotProvider,
 			ExecutionGraph.class.getClassLoader(),
-			new UnregisteredMetricsGroup()
+			new UnregisteredMetricsGroup(),
+			null
 		);
 	}
 
@@ -275,7 +280,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			List<URL> requiredClasspaths,
 			SlotProvider slotProvider,
 			ClassLoader userClassLoader,
-			MetricGroup metricGroup) throws IOException {
+			MetricGroup metricGroup,
+			BlobServer blobServer) throws IOException {
 
 		checkNotNull(futureExecutor);
 		checkNotNull(jobId);
@@ -318,6 +324,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		metricGroup.gauge(RESTARTING_TIME_METRIC_NAME, new RestartTimeGauge());
 
 		this.kvStateLocationRegistry = new KvStateLocationRegistry(jobId, getAllVertices());
+
+		this.blobServer = blobServer;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -625,6 +633,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		return this.stateTimestamps[status.ordinal()];
 	}
 
+	public final BlobServer getBlobServer() {
+		return blobServer;
+	}
+
 	/**
 	 * Returns the ExecutionContext associated with this ExecutionGraph.
 	 *
@@ -769,8 +781,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	}
 
 	/**
-	 * 
-	 * 
+	 *
+	 *
 	 * @param slotProvider  The resource provider from which the slots are allocated
 	 * @param timeout       The maximum time that the deployment may take, before a
 	 *                      TimeoutException is thrown.
@@ -875,7 +887,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 					// Wouldn't it be nice if we could return an actual Void object?
 					// return (Void) Unsafe.getUnsafe().allocateInstance(Void.class);
-					return null; 
+					return null;
 				}
 			}, futureExecutor);
 

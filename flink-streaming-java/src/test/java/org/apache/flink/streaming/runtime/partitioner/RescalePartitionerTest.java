@@ -151,7 +151,8 @@ public class RescalePartitionerTest extends TestLogger {
 			new ArrayList<URL>(),
 			new Scheduler(TestingUtils.defaultExecutionContext()),
 			ExecutionGraph.class.getClassLoader(),
-			new UnregisteredMetricsGroup());
+			new UnregisteredMetricsGroup(),
+			null);
 		try {
 			eg.attachJobGraph(jobVertices);
 		}

@@ -162,9 +162,10 @@ public class ExecutionGraphMetricsTest extends TestLogger {
 				testingRestartStrategy,
 				Collections.<BlobKey>emptyList(),
 				Collections.<URL>emptyList(),
-			scheduler,
+				scheduler,
 				getClass().getClassLoader(),
-				metricGroup);
+				metricGroup,
+				null);
 	
 			// get restarting time metric
 			Metric metric = testingReporter.getMetric(ExecutionGraph.RESTARTING_TIME_METRIC_NAME);
