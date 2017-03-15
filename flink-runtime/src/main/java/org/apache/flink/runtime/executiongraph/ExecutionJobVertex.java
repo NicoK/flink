@@ -25,6 +25,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.io.InputSplit;
@@ -72,14 +73,6 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	/** Use the same log for all ExecutionGraph classes */
 	private static final Logger LOG = ExecutionGraph.LOG;
-
-	/**
-	 * If the serialized task information inside {@link #serializedTaskInformation} is larger than
-	 * this, we try to offload it to the blob server.
-	 *
-	 * @see #tryOffLoadTaskInformation()
-	 */
-	private static final int MAX_SHORT_MESSAGE_SIZE = 1 * 1024; // TODO: make configurable
 
 	public static final int VALUE_NOT_SET = -1;
 
@@ -417,14 +410,18 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	 */
 	@Nullable
 	private BlobKey tryOffLoadTaskInformation() {
-		// more than MAX_SHORT_MESSAGE_SIZE?
-		if (serializedTaskInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
+		BlobServer blobServer = graph.getBlobServer();
+		if (blobServer == null) {
+			return null;
+		}
 
-			BlobServer blobServer = graph.getBlobServer();
-			if (blobServer == null) {
-				LOG.warn("No BLOB store available: unable to offload data!");
-				return null;
-			}
+		// If the serialized task information inside #serializedTaskInformation is larger than this,
+		// we try to offload it to the BLOB server.
+		final int rpcOffloadMinSize =
+			blobServer.getConfiguration().getInteger(AkkaOptions.AKKA_RPC_OFFLOAD_MINSIZE);
+
+		if (serializedTaskInformation.getByteArray().length > rpcOffloadMinSize) {
+			LOG.info("Storing task {} information at the BLOB server", getJobVertexId());
 
 			// TODO: do not overwrite existing task info and thus speed up recovery?
 			try {

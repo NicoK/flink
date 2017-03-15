@@ -26,6 +26,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
@@ -162,14 +163,6 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** The log object used for debugging. */
 	static final Logger LOG = LoggerFactory.getLogger(ExecutionGraph.class);
-
-	/**
-	 * If the serialized job information inside {@link #serializedJobInformation} is larger than
-	 * this, we try to offload it to the blob server.
-	 *
-	 * @see #tryOffLoadJobInformation()
-	 */
-	private static final int MAX_SHORT_MESSAGE_SIZE = 1 * 1024; // TODO: make configurable
 
 	// --------------------------------------------------------------------------------------------
 
@@ -415,17 +408,21 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 */
 	@Nullable
 	private BlobKey tryOffLoadJobInformation() {
-		// more than MAX_SHORT_MESSAGE_SIZE?
-		if (serializedJobInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
+		if (blobServer == null) {
+			return null;
+		}
 
-			if (blobServer == null) {
-				LOG.warn("No BLOB store available: unable to offload data!");
-				return null;
-			}
+		// If the serialized job information inside serializedJobInformation is larger than this,
+		// we try to offload it to the BLOB server.
+		final int rpcOffloadMinSize =
+			blobServer.getConfiguration().getInteger(AkkaOptions.AKKA_RPC_OFFLOAD_MINSIZE);
 
-			// TODO: do not overwrite existing job info and thus speed up recovery
+		if (serializedJobInformation.getByteArray().length > rpcOffloadMinSize) {
+			LOG.info("Storing job {} information at the BLOB server", getJobID());
+
+			// TODO: do not overwrite existing job info and thus speed up recovery?
 			try {
-				return blobServer.putHA(jobInformation.getJobId(), serializedJobInformation.getByteArray());
+				return blobServer.putHA(getJobID(), serializedJobInformation.getByteArray());
 			} catch (IOException e) {
 				LOG.warn("Failed to offload job " + getJobID() + " information data to BLOB store", e);
 			}
