@@ -96,7 +96,13 @@ public class BlobLibraryCacheManagerTest {
 			assertEquals(0, checkFilesExist(keys, libraryCacheManager, false));
 
 			try {
-				bc.get(jid, "test");
+				bc.get(keys.get(0));
+				fail("name-addressable BLOB should have been deleted");
+			} catch (IOException e) {
+				// expected
+			}
+			try {
+				bc.get(keys.get(1));
 				fail("name-addressable BLOB should have been deleted");
 			} catch (IOException e) {
 				// expected
@@ -180,7 +186,6 @@ public class BlobLibraryCacheManagerTest {
 			keys.add(bc.put(buf));
 			buf[0] += 1;
 			keys.add(bc.put(buf));
-			bc.put(jid, "test", buf);
 
 			long cleanupInterval = 1000l;
 			libraryCacheManager = new BlobLibraryCacheManager(server, cleanupInterval);
