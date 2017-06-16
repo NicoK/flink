@@ -23,7 +23,7 @@ import org.apache.flink.runtime.blob.BlobCache;
 import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobServer;
-import org.apache.flink.runtime.blob.VoidBlobStore;
+import org.apache.flink.runtime.blob.VoidDistributedBlobStore;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.util.OperatingSystem;
@@ -59,7 +59,7 @@ public class BlobLibraryCacheManagerTest {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 			InetSocketAddress blobSocketAddress = new InetSocketAddress(server.getPort());
 			BlobClient bc = new BlobClient(blobSocketAddress, config);
 
@@ -179,7 +179,7 @@ public class BlobLibraryCacheManagerTest {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 			InetSocketAddress blobSocketAddress = new InetSocketAddress(server.getPort());
 			BlobClient bc = new BlobClient(blobSocketAddress, config);
 
@@ -249,9 +249,9 @@ public class BlobLibraryCacheManagerTest {
 		try {
 			// create the blob transfer services
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
-			cache = new BlobCache(serverAddress, config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
+			InetSocketAddress serverAddress = server.getAddress();
+			cache = new BlobCache(serverAddress, config, new VoidDistributedBlobStore());
 
 			// upload some meaningless data to the server
 			BlobClient uploader = new BlobClient(serverAddress, config);

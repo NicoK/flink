@@ -21,7 +21,7 @@ package org.apache.flink.runtime.jobmaster;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.blob.BlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStore;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -71,7 +71,7 @@ public class JobManagerRunnerMockTest extends TestLogger {
 
 	private TestingOnCompletionActions jobCompletion;
 
-	private BlobStore blobStore;
+	private DistributedBlobStore blobStore;
 
 	private RunningJobsRegistry runningJobsRegistry;
 
@@ -94,7 +94,7 @@ public class JobManagerRunnerMockTest extends TestLogger {
 
 		SubmittedJobGraphStore submittedJobGraphStore = mock(SubmittedJobGraphStore.class);
 
-		blobStore = mock(BlobStore.class);
+		blobStore = mock(DistributedBlobStore.class);
 		
 		HighAvailabilityServices haServices = mock(HighAvailabilityServices.class);
 		when(haServices.getJobManagerLeaderElectionService(any(JobID.class))).thenReturn(leaderElectionService);

@@ -21,7 +21,7 @@ package org.apache.flink.runtime.webmonitor;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.runtime.blob.BlobView;
+import org.apache.flink.runtime.blob.ReadOnlyDistributedBlobStore;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
@@ -133,7 +133,7 @@ public final class WebMonitorUtils {
 
 			Constructor<? extends WebMonitor> constructor = clazz.getConstructor(Configuration.class,
 				LeaderRetrievalService.class,
-				BlobView.class,
+				ReadOnlyDistributedBlobStore.class,
 				ActorSystem.class);
 			return constructor.newInstance(
 				config,

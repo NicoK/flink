@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
@@ -28,24 +29,23 @@ import org.apache.flink.util.NetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nonnull;
 import javax.net.ssl.SSLContext;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -59,16 +59,13 @@ public class BlobServer extends Thread implements BlobService {
 	private static final Logger LOG = LoggerFactory.getLogger(BlobServer.class);
 
 	/** Counter to generate unique names for temporary files. */
-	private final AtomicInteger tempFileCounter = new AtomicInteger(0);
+	private final AtomicLong tempFileCounter = new AtomicLong(0L);
 
 	/** The server socket listening for incoming connections. */
 	private final ServerSocket serverSocket;
 
 	/** The SSL server context if ssl is enabled for the connections */
 	private SSLContext serverSSLContext = null;
-
-	/** Blob Server configuration */
-	private final Configuration blobServiceConfiguration;
 
 	/** Indicates whether a shutdown of server component has been requested. */
 	private final AtomicBoolean shutdownRequested = new AtomicBoolean();
@@ -77,7 +74,7 @@ public class BlobServer extends Thread implements BlobService {
 	private final File storageDir;
 
 	/** Blob store for distributed file storage, e.g. in HA */
-	private final BlobStore blobStore;
+	private final DistributedBlobStore blobStore;
 
 	/** Set of currently running threads */
 	private final Set<BlobServerConnection> activeConnections = new HashSet<>();
@@ -98,20 +95,19 @@ public class BlobServer extends Thread implements BlobService {
 	 * Instantiates a new BLOB server and binds it to a free network port.
 	 *
 	 * @param config Configuration to be used to instantiate the BlobServer
-	 * @param blobStore BlobStore to store blobs persistently
+	 * @param blobStore DistributedBlobStore to store blobs persistently
 	 *
 	 * @throws IOException
 	 * 		thrown if the BLOB server cannot bind to a free network port or if the
 	 * 		(local or distributed) file storage cannot be created or is not usable
 	 */
-	public BlobServer(Configuration config, BlobStore blobStore) throws IOException {
-		this.blobServiceConfiguration = checkNotNull(config);
+	public BlobServer(Configuration config, DistributedBlobStore blobStore) throws IOException {
 		this.blobStore = checkNotNull(blobStore);
 		this.readWriteLock = new ReentrantReadWriteLock();
 
 		// configure and create the storage directory
 		String storageDirectory = config.getString(BlobServerOptions.STORAGE_DIRECTORY);
-		this.storageDir = BlobUtils.initStorageDirectory(storageDirectory);
+		this.storageDir = BlobUtils.initLocalStorageDirectory(storageDirectory);
 		LOG.info("Created BLOB server storage directory {}", storageDir);
 
 		// configure the maximum number of concurrent connections
@@ -170,13 +166,13 @@ public class BlobServer extends Thread implements BlobService {
 		}
 
 		// start the server thread
-		setName("BLOB Server listener at " + getPort());
+		setName("BLOB Server listener at " + getAddress());
 		setDaemon(true);
 		start();
 
 		if (LOG.isInfoEnabled()) {
-			LOG.info("Started BLOB server at {}:{} - max concurrent requests: {} - max backlog: {}",
-					serverSocket.getInetAddress().getHostAddress(), getPort(), maxConnections, backlog);
+			LOG.info("Started BLOB server at {} - max concurrent requests: {} - max backlog: {}",
+					getAddress(), maxConnections, backlog);
 		}
 	}
 
@@ -187,14 +183,18 @@ public class BlobServer extends Thread implements BlobService {
 	/**
 	 * Returns a file handle to the file associated with the given blob key on the blob
 	 * server.
+	 * <p>
+	 * <strong>This is only called from the {@link BlobServerConnection}</strong>
 	 *
-	 * <p><strong>This is only called from the {@link BlobServerConnection}</strong>
+	 * @param jobId
+	 * 		the ID of the job the BLOB belongs
+	 * @param key
+	 * 		identifying the file
 	 *
-	 * @param key identifying the file
-	 * @return file handle to the file
+	 * @return file handle to the local file
 	 */
-	File getStorageLocation(BlobKey key) {
-		return BlobUtils.getStorageLocation(storageDir, key);
+	File getStorageLocation(JobID jobId, BlobKey key) {
+		return BlobUtils.getStorageLocation(storageDir, jobId, key);
 	}
 
 	/**
@@ -202,22 +202,24 @@ public class BlobServer extends Thread implements BlobService {
 	 *
 	 * @return a temporary file inside the BLOB server's incoming directory
 	 */
-	File createTemporaryFilename() {
-		return new File(BlobUtils.getIncomingDirectory(storageDir),
+	File createTemporaryFilename(JobID jobId) {
+		return new File(BlobUtils.getIncomingDirectory(storageDir, jobId),
 				String.format("temp-%08d", tempFileCounter.getAndIncrement()));
 	}
 
 	/**
 	 * Returns the blob store.
 	 */
-	BlobStore getBlobStore() {
+	@Nonnull
+	DistributedBlobStore getBlobStore() {
 		return blobStore;
 	}
 
 	/**
 	 * Returns the lock used to guard file accesses
 	 */
-	public ReadWriteLock getReadWriteLock() {
+	@Nonnull
+	ReadWriteLock getReadWriteLock() {
 		return readWriteLock;
 	}
 
@@ -320,17 +322,11 @@ public class BlobServer extends Thread implements BlobService {
 			}
 
 			if(LOG.isInfoEnabled()) {
-				LOG.info("Stopped BLOB server at {}:{}", serverSocket.getInetAddress().getHostAddress(), getPort());
+				LOG.info("Stopped BLOB server at {}", getAddress());
 			}
 
 			ExceptionUtils.tryRethrowIOException(exception);
 		}
-	}
-
-	@Override
-	public BlobClient createClient() throws IOException {
-		return new BlobClient(new InetSocketAddress(serverSocket.getInetAddress(), getPort()),
-			blobServiceConfiguration);
 	}
 
 	/**
@@ -338,30 +334,39 @@ public class BlobServer extends Thread implements BlobService {
 	 * the blob key up in its local storage. If the file exists, then the URL is returned. If the
 	 * file does not exist, then a FileNotFoundException is thrown.
 	 *
-	 * @param requiredBlob blob key associated with the requested file
-	 * @return URL of the file
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param key
+	 * 		blob key associated with the requested file
+	 *
+	 * @return The path to the local file.
+	 *
+	 * @throws java.io.FileNotFoundException
+	 * 		if there is no such file;
 	 * @throws IOException
+	 * 		if any other error occurs when retrieving the file
 	 */
 	@Override
-	public URL getURL(BlobKey requiredBlob) throws IOException {
-		checkArgument(requiredBlob != null, "BLOB key cannot be null.");
+	public File getFile(JobID jobId, BlobKey key) throws IOException {
+		checkNotNull(jobId);
+		checkNotNull(key);
 
-		final File localFile = BlobUtils.getStorageLocation(storageDir, requiredBlob);
+		final File localFile = BlobUtils.getStorageLocation(storageDir, jobId, key);
 
 		if (localFile.exists()) {
-			return localFile.toURI().toURL();
+			return localFile;
 		}
 		else {
 			try {
 				// Try the blob store
-				blobStore.get(requiredBlob, localFile);
+				blobStore.download(jobId, key, localFile);
 			}
 			catch (Exception e) {
 				throw new IOException("Failed to copy from blob store.", e);
 			}
 
 			if (localFile.exists()) {
-				return localFile.toURI().toURL();
+				return localFile;
 			}
 			else {
 				throw new FileNotFoundException("Local file " + localFile + " does not exist " +
@@ -370,39 +375,72 @@ public class BlobServer extends Thread implements BlobService {
 		}
 	}
 
+	@Override
+	public void releaseFile(final JobID jobId, final BlobKey key) {
+		// TODO
+	}
+
 	/**
-	 * This method deletes the file associated to the blob key if it exists in the local storage
-	 * of the blob server.
+	 * This method deletes the file associated with the blob key from both local and HA store.
 	 *
-	 * @param key associated with the file to be deleted
-	 * @throws IOException
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param key
+	 * 		blob key associated with the file to delete
+	 *
+	 * @return <code>true</code> if and only if the file was successfully deleted;
+	 * <code>false</code> otherwise
 	 */
 	@Override
-	public void delete(BlobKey key) throws IOException {
-		final File localFile = BlobUtils.getStorageLocation(storageDir, key);
+	public boolean delete(JobID jobId, BlobKey key) {
+		final File localFile = BlobUtils.getStorageLocation(storageDir, jobId, key);
+		boolean success = true;
 
 		readWriteLock.writeLock().lock();
 
 		try {
 			if (!localFile.delete() && localFile.exists()) {
 				LOG.warn("Failed to delete locally BLOB " + key + " at " + localFile.getAbsolutePath());
+				success = false;
 			}
 
+			if (!blobStore.delete(jobId, key)) {
+				success = false;
+			}
+		} finally {
+			readWriteLock.writeLock().unlock();
+		}
 
-			blobStore.delete(key);
+		return success;
+	}
+
+	/**
+	 * Deletes all files associated with the given job id from the storage.
+	 *
+	 * @param jobId
+	 * 		JobID of the files in the blob store
+	 */
+	public void deleteAll(final JobID jobId) {
+		readWriteLock.writeLock().lock();
+
+		try {
+			try {
+				File directory = BlobUtils.getStorageLocationPath(storageDir, jobId);
+				FileUtils.deleteDirectory(directory);
+			} catch (Exception e) {
+				LOG.warn("Failed to delete local BLOB storage dir {}.",
+					BlobUtils.getStorageLocationPath(storageDir, jobId));
+			}
+
+			blobStore.deleteAll(jobId);
 		} finally {
 			readWriteLock.writeLock().unlock();
 		}
 	}
 
-	/**
-	 * Returns the port on which the server is listening.
-	 *
-	 * @return port on which the server is listening
-	 */
 	@Override
-	public int getPort() {
-		return this.serverSocket.getLocalPort();
+	public InetSocketAddress getAddress() {
+		return new InetSocketAddress(serverSocket.getInetAddress(), serverSocket.getLocalPort());
 	}
 
 	/**

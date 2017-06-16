@@ -76,10 +76,9 @@ public class BlobServerGetTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
-			client = new BlobClient(serverAddress, config);
+			client = new BlobClient(server.getAddress(), config);
 
 			byte[] data = new byte[2000000];
 			rnd.nextBytes(data);
@@ -116,7 +115,7 @@ public class BlobServerGetTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
 			client = new BlobClient(serverAddress, config);
@@ -162,7 +161,7 @@ public class BlobServerGetTest extends TestLogger {
 	/**
 	 * FLINK-6020
 	 *
-	 * Tests that concurrent get operations don't concurrently access the BlobStore to download a blob.
+	 * Tests that concurrent get operations don't concurrently access the DistributedBlobStore to download a blob.
 	 */
 	@Test
 	public void testConcurrentGetOperations() throws IOException, ExecutionException, InterruptedException {
@@ -170,7 +169,7 @@ public class BlobServerGetTest extends TestLogger {
 
 		configuration.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
 
-		final BlobStore blobStore = mock(BlobStore.class);
+		final DistributedBlobStore blobStore = mock(DistributedBlobStore.class);
 
 		final int numberConcurrentGetOperations = 3;
 		final List<Future<InputStream>> getOperations = new ArrayList<>(numberConcurrentGetOperations);
@@ -194,7 +193,7 @@ public class BlobServerGetTest extends TestLogger {
 					return null;
 				}
 			}
-		).when(blobStore).get(any(BlobKey.class), any(File.class));
+		).when(blobStore).download(any(BlobKey.class), any(File.class));
 
 		final ExecutorService executor = Executors.newFixedThreadPool(numberConcurrentGetOperations);
 
@@ -235,8 +234,8 @@ public class BlobServerGetTest extends TestLogger {
 				inputStream.close();
 			}
 
-			// verify that we downloaded the requested blob exactly once from the BlobStore
-			verify(blobStore, times(1)).get(eq(blobKey), any(File.class));
+			// verify that we downloaded the requested blob exactly once from the DistributedBlobStore
+			verify(blobStore, times(1)).download(eq(blobKey), any(File.class));
 		} finally {
 			executor.shutdownNow();
 		}

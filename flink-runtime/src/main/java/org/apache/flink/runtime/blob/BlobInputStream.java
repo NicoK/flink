@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.util.Preconditions;
+
 import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -48,8 +50,7 @@ final class BlobInputStream extends InputStream {
 	private final int bytesToReceive;
 
 	/**
-	 * The message digest to verify the integrity of the retrieved content-addressable BLOB. If the BLOB is
-	 * non-content-addressable, this is <code>null</code>.
+	 * The message digest to verify the integrity of the retrieved content-addressable BLOB.
 	 */
 	private final MessageDigest md;
 
@@ -69,14 +70,14 @@ final class BlobInputStream extends InputStream {
 	 *         throws if an I/O error occurs while reading the BLOB data from the BLOB server
 	 */
 	BlobInputStream(final InputStream wrappedInputStream, final BlobKey blobKey) throws IOException {
-		this.wrappedInputStream = wrappedInputStream;
-		this.blobKey = blobKey;
+		this.wrappedInputStream = Preconditions.checkNotNull(wrappedInputStream);
+		this.blobKey = Preconditions.checkNotNull(blobKey);
 		this.bytesToReceive = readLength(wrappedInputStream);
 		if (this.bytesToReceive < 0) {
 			throw new FileNotFoundException();
 		}
 
-		this.md = (blobKey != null) ? BlobUtils.createMessageDigest() : null;
+		this.md = BlobUtils.createMessageDigest();
 	}
 
 	/**
@@ -103,13 +104,11 @@ final class BlobInputStream extends InputStream {
 
 		++this.bytesReceived;
 
-		if (this.md != null) {
-			this.md.update((byte) read);
-			if (this.bytesReceived == this.bytesToReceive) {
-				final BlobKey computedKey = new BlobKey(this.md.digest());
-				if (!computedKey.equals(this.blobKey)) {
-					throw new IOException("Detected data corruption during transfer");
-				}
+		this.md.update((byte) read);
+		if (this.bytesReceived == this.bytesToReceive) {
+			final BlobKey computedKey = new BlobKey(this.md.digest());
+			if (!computedKey.equals(this.blobKey)) {
+				throw new IOException("Detected data corruption during transfer");
 			}
 		}
 
@@ -137,13 +136,11 @@ final class BlobInputStream extends InputStream {
 
 		this.bytesReceived += read;
 
-		if (this.md != null) {
-			this.md.update(b, off, read);
-			if (this.bytesReceived == this.bytesToReceive) {
-				final BlobKey computedKey = new BlobKey(this.md.digest());
-				if (!computedKey.equals(this.blobKey)) {
-					throw new IOException("Detected data corruption during transfer");
-				}
+		this.md.update(b, off, read);
+		if (this.bytesReceived == this.bytesToReceive) {
+			final BlobKey computedKey = new BlobKey(this.md.digest());
+			if (!computedKey.equals(this.blobKey)) {
+				throw new IOException("Detected data corruption during transfer");
 			}
 		}
 

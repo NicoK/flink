@@ -23,7 +23,7 @@ import org.apache.curator.test.TestingServer;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
-import org.apache.flink.runtime.blob.VoidBlobStore;
+import org.apache.flink.runtime.blob.VoidDistributedBlobStore;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperHaServices;
@@ -74,7 +74,7 @@ public class ZooKeeperLeaderRetrievalTest extends TestLogger{
 			client,
 			TestingUtils.defaultExecutor(),
 			config,
-			new VoidBlobStore());
+			new VoidDistributedBlobStore());
 	}
 
 	@After

@@ -43,13 +43,11 @@ public class BlobServerProtocol {
 
 	/**
 	 * Internal code to identify a reference via content hash as the key.
-	 *
-	 * Note: previously, there was also <tt>NAME_ADDRESSABLE</tt> (code <tt>1</tt>).
+	 * <p>
+	 * Note: previously, there was also <tt>NAME_ADDRESSABLE</tt> (code <tt>1</tt>) and
+	 * <tt>JOB_ID_SCOPE</tt> (code <tt>2</tt>).
 	 */
 	static final byte CONTENT_ADDRESSABLE = 0;
-
-	/** Internal code to identify a reference via jobId as the key */
-	static final byte JOB_ID_SCOPE = 2;
 
 	// --------------------------------------------------------------------------------------------
 

@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.security.MessageDigest;
 import java.util.Arrays;
 
 /**
@@ -62,16 +61,6 @@ public final class BlobKey implements Serializable, Comparable<BlobKey> {
 		}
 
 		this.key = key;
-	}
-
-	/**
-	 * Adds the BLOB key to the given {@link MessageDigest}.
-	 * 
-	 * @param md
-	 *        the message digest to add the BLOB key to
-	 */
-	public void addToMessageDigest(MessageDigest md) {
-		md.update(this.key);
 	}
 	
 	@Override

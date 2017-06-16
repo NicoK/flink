@@ -30,7 +30,7 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.examples.java.wordcount.WordCount;
 import org.apache.flink.runtime.blob.BlobRecoveryITCase;
-import org.apache.flink.runtime.blob.BlobStoreService;
+import org.apache.flink.runtime.blob.DistributedBlobStoreService;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
@@ -236,7 +236,7 @@ public class HDFSTest {
 		config.setString(CoreOptions.STATE_BACKEND, "ZOOKEEPER");
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, hdfsURI);
 
-		BlobStoreService blobStoreService = null;
+		DistributedBlobStoreService blobStoreService = null;
 
 		try {
 			blobStoreService = BlobUtils.createBlobStoreFromConfig(config);

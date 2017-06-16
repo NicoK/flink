@@ -21,7 +21,7 @@ package org.apache.flink.runtime.highavailability;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.runtime.blob.BlobStoreService;
+import org.apache.flink.runtime.blob.DistributedBlobStoreService;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedHaServices;
 import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneHaServices;
@@ -51,7 +51,7 @@ public class HighAvailabilityServicesUtils {
 				return new EmbeddedHaServices(executor);
 
 			case ZOOKEEPER:
-				BlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
+				DistributedBlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
 
 				return new ZooKeeperHaServices(
 					ZooKeeperUtils.startCuratorFramework(config),
@@ -90,7 +90,7 @@ public class HighAvailabilityServicesUtils {
 
 				return new StandaloneHaServices(resourceManagerRpcUrl, jobManagerRpcUrl);
 			case ZOOKEEPER:
-				BlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(configuration);
+				DistributedBlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(configuration);
 
 				return new ZooKeeperHaServices(
 					ZooKeeperUtils.startCuratorFramework(configuration),

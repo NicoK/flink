@@ -56,7 +56,7 @@ public class BlobRecoveryITCase extends TestLogger {
 		config.setString(CoreOptions.STATE_BACKEND, "FILESYSTEM");
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, temporaryFolder.getRoot().getPath());
 
-		BlobStoreService blobStoreService = null;
+		DistributedBlobStoreService blobStoreService = null;
 
 		try {
 			blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
@@ -69,7 +69,7 @@ public class BlobRecoveryITCase extends TestLogger {
 		}
 	}
 
-	public static void testBlobServerRecovery(final Configuration config, final BlobStore blobStore) throws IOException {
+	public static void testBlobServerRecovery(final Configuration config, final DistributedBlobStore blobStore) throws IOException {
 		final String clusterId = config.getString(HighAvailabilityOptions.HA_CLUSTER_ID);
 		String storagePath = config.getString(HighAvailabilityOptions.HA_STORAGE_PATH) + "/" + clusterId;
 		Random rand = new Random();
@@ -81,7 +81,7 @@ public class BlobRecoveryITCase extends TestLogger {
 		try {
 			for (int i = 0; i < server.length; i++) {
 				server[i] = new BlobServer(config, blobStore);
-				serverAddress[i] = new InetSocketAddress("localhost", server[i].getPort());
+				serverAddress[i] = server[i].getAddress();
 			}
 
 			client = new BlobClient(serverAddress[0], config);

@@ -46,7 +46,7 @@ public class BlobCacheRetriesTest {
 	public void testBlobFetchRetries() throws IOException {
 		final Configuration config = new Configuration();
 
-		testBlobFetchRetries(config, new VoidBlobStore());
+		testBlobFetchRetries(config, new VoidDistributedBlobStore());
 	}
 
 	/**
@@ -60,7 +60,7 @@ public class BlobCacheRetriesTest {
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH,
 			temporaryFolder.getRoot().getPath());
 
-		BlobStoreService blobStoreService = null;
+		DistributedBlobStoreService blobStoreService = null;
 
 		try {
 			blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
@@ -81,7 +81,7 @@ public class BlobCacheRetriesTest {
 	 * 		configuration to use (the BlobCache will get some additional settings
 	 * 		set compared to this one)
 	 */
-	private void testBlobFetchRetries(final Configuration config, final BlobStore blobStore) throws IOException {
+	private void testBlobFetchRetries(final Configuration config, final DistributedBlobStore blobStore) throws IOException {
 		final byte[] data = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 0};
 
 		BlobServer server = null;
@@ -107,7 +107,7 @@ public class BlobCacheRetriesTest {
 				}
 			}
 
-			cache = new BlobCache(serverAddress, config, new VoidBlobStore());
+			cache = new BlobCache(serverAddress, config, new VoidDistributedBlobStore());
 
 			// trigger a download - it should fail the first two times, but retry, and succeed eventually
 			URL url = cache.getURL(key);
@@ -137,7 +137,7 @@ public class BlobCacheRetriesTest {
 	public void testBlobFetchWithTooManyFailures() throws IOException {
 		final Configuration config = new Configuration();
 
-		testBlobFetchWithTooManyFailures(config, new VoidBlobStore());
+		testBlobFetchWithTooManyFailures(config, new VoidDistributedBlobStore());
 	}
 
 	/**
@@ -151,7 +151,7 @@ public class BlobCacheRetriesTest {
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH,
 			temporaryFolder.getRoot().getPath());
 
-		BlobStoreService blobStoreService = null;
+		DistributedBlobStoreService blobStoreService = null;
 
 		try {
 			blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
@@ -172,7 +172,7 @@ public class BlobCacheRetriesTest {
 	 * 		configuration to use (the BlobCache will get some additional settings
 	 * 		set compared to this one)
 	 */
-	private void testBlobFetchWithTooManyFailures(final Configuration config, final BlobStore blobStore) throws IOException {
+	private void testBlobFetchWithTooManyFailures(final Configuration config, final DistributedBlobStore blobStore) throws IOException {
 		final byte[] data = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 };
 
 		BlobServer server = null;
@@ -198,7 +198,7 @@ public class BlobCacheRetriesTest {
 				}
 			}
 
-			cache = new BlobCache(serverAddress, config, new VoidBlobStore());
+			cache = new BlobCache(serverAddress, config, new VoidDistributedBlobStore());
 
 			// trigger a download - it should fail eventually
 			try {

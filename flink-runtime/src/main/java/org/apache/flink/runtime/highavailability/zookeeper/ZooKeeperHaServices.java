@@ -23,8 +23,8 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
-import org.apache.flink.runtime.blob.BlobStore;
-import org.apache.flink.runtime.blob.BlobStoreService;
+import org.apache.flink.runtime.blob.DistributedBlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStoreService;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointRecoveryFactory;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -100,13 +100,13 @@ public class ZooKeeperHaServices implements HighAvailabilityServices {
 	private final RunningJobsRegistry runningJobsRegistry;
 
 	/** Store for arbitrary blobs */
-	private final BlobStoreService blobStoreService;
+	private final DistributedBlobStoreService blobStoreService;
 
 	public ZooKeeperHaServices(
 			CuratorFramework client,
 			Executor executor,
 			Configuration configuration,
-			BlobStoreService blobStoreService) {
+			DistributedBlobStoreService blobStoreService) {
 		this.client = checkNotNull(client);
 		this.executor = checkNotNull(executor);
 		this.configuration = checkNotNull(configuration);
@@ -155,7 +155,7 @@ public class ZooKeeperHaServices implements HighAvailabilityServices {
 	}
 
 	@Override
-	public BlobStore createBlobStore() throws IOException {
+	public DistributedBlobStore createBlobStore() throws IOException {
 		return blobStoreService;
 	}
 

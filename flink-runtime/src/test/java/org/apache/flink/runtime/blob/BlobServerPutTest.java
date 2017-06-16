@@ -89,7 +89,7 @@ public class BlobServerPutTest extends TestLogger {
 	 */
 	@Test
 	public void testServerContentAddressableGetStorageLocationConcurrent() throws Exception {
-		BlobServer server = new BlobServer(new Configuration(), new VoidBlobStore());
+		BlobServer server = new BlobServer(new Configuration(), new VoidDistributedBlobStore());
 
 		try {
 			BlobKey key = new BlobKey();
@@ -133,7 +133,7 @@ public class BlobServerPutTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
 			client = new BlobClient(serverAddress, config);
@@ -187,7 +187,7 @@ public class BlobServerPutTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
 			client = new BlobClient(serverAddress, config);
@@ -221,7 +221,7 @@ public class BlobServerPutTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
 			client = new BlobClient(serverAddress, config);
@@ -254,7 +254,7 @@ public class BlobServerPutTest extends TestLogger {
 		File tempFileDir = null;
 		try {
 			Configuration config = new Configuration();
-			server = new BlobServer(config, new VoidBlobStore());
+			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			// make sure the blob server cannot create any files in its storage dir
 			tempFileDir = server.createTemporaryFilename().getParentFile().getParentFile();
@@ -302,12 +302,12 @@ public class BlobServerPutTest extends TestLogger {
 	/**
 	 * FLINK-6020
 	 *
-	 * Tests that concurrent put operations will only upload the file once to the {@link BlobStore}.
+	 * Tests that concurrent put operations will only upload the file once to the {@link DistributedBlobStore}.
 	 */
 	@Test
 	public void testConcurrentPutOperations() throws IOException, ExecutionException, InterruptedException {
 		final Configuration configuration = new Configuration();
-		BlobStore blobStore = mock(BlobStore.class);
+		DistributedBlobStore blobStore = mock(DistributedBlobStore.class);
 		int concurrentPutOperations = 2;
 		int dataSize = 1024;
 
@@ -351,7 +351,7 @@ public class BlobServerPutTest extends TestLogger {
 			}
 
 			// check that we only uploaded the file once to the blob store
-			verify(blobStore, times(1)).put(any(File.class), eq(blobKey));
+			verify(blobStore, times(1)).upload(any(File.class), eq(blobKey));
 		} finally {
 			executor.shutdownNow();
 		}

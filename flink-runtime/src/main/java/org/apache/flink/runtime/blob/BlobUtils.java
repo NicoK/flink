@@ -25,10 +25,10 @@ import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
-import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.StringUtils;
 import org.slf4j.Logger;
 
+import javax.annotation.Nonnull;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
@@ -63,7 +63,7 @@ public class BlobUtils {
 	private static final String JOB_DIR_PREFIX = "job_";
 
 	/**
-	 * Creates a BlobStore based on the parameters set in the configuration.
+	 * Creates a DistributedBlobStore based on the parameters set in the configuration.
 	 *
 	 * @param config
 	 * 		configuration to use
@@ -73,11 +73,11 @@ public class BlobUtils {
 	 * @throws IOException
 	 * 		thrown if the (distributed) file storage cannot be created
 	 */
-	public static BlobStoreService createBlobStoreFromConfig(Configuration config) throws IOException {
+	public static DistributedBlobStoreService createBlobStoreFromConfig(Configuration config) throws IOException {
 		HighAvailabilityMode highAvailabilityMode = HighAvailabilityMode.fromConfig(config);
 
 		if (highAvailabilityMode == HighAvailabilityMode.NONE) {
-			return new VoidBlobStore();
+			return new VoidDistributedBlobStore();
 		} else if (highAvailabilityMode == HighAvailabilityMode.ZOOKEEPER) {
 			return createFileSystemBlobStore(config);
 		} else {
@@ -85,7 +85,7 @@ public class BlobUtils {
 		}
 	}
 
-	private static BlobStoreService createFileSystemBlobStore(Configuration configuration) throws IOException {
+	private static DistributedBlobStoreService createFileSystemBlobStore(Configuration configuration) throws IOException {
 		String storagePath = configuration.getValue(
 			HighAvailabilityOptions.HA_STORAGE_PATH);
 		if (isNullOrWhitespaceOnly(storagePath)) {
@@ -113,30 +113,33 @@ public class BlobUtils {
 			configuration.getValue(HighAvailabilityOptions.HA_CLUSTER_ID);
 		storagePath += "/" + clusterId;
 
-		return new FileSystemBlobStore(fileSystem, storagePath);
+		return new FileSystemDistributedBlobStore(fileSystem, storagePath);
 	}
 
 	/**
-	 * Creates a storage directory for a blob service.
+	 * Creates a local storage directory for a blob service under the given parent directory.
 	 *
-	 * @return the storage directory used by a BLOB service
+	 * @param basePath
+	 * 		base path, i.e. parent directory, of the storage directory to use (if <tt>null</tt> or
+	 * 		empty, the path in <tt>java.io.tmpdir</tt> will be used)
+	 *
+	 * @return a new local storage directory
 	 *
 	 * @throws IOException
-	 * 		thrown if the (local or distributed) file storage cannot be created or
-	 * 		is not usable
+	 * 		thrown if the local file storage cannot be created or is not usable
 	 */
-	static File initStorageDirectory(String storageDirectory) throws
-		IOException {
+	static File initLocalStorageDirectory(String basePath) throws IOException {
 		File baseDir;
-		if (StringUtils.isNullOrWhitespaceOnly(storageDirectory)) {
+		if (StringUtils.isNullOrWhitespaceOnly(basePath)) {
 			baseDir = new File(System.getProperty("java.io.tmpdir"));
 		}
 		else {
-			baseDir = new File(storageDirectory);
+			baseDir = new File(basePath);
 		}
 
 		File storageDir;
 
+		// NOTE: although we will be using UUIDs, there may be collisions
 		final int MAX_ATTEMPTS = 10;
 		for(int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 			storageDir = new File(baseDir, String.format(
@@ -144,7 +147,7 @@ public class BlobUtils {
 
 			// Create the storage dir if it doesn't exist. Only return it when the operation was
 			// successful.
-			if (!storageDir.exists() && storageDir.mkdirs()) {
+			if (storageDir.mkdirs()) {
 				return storageDir;
 			}
 		}
@@ -154,13 +157,18 @@ public class BlobUtils {
 	}
 
 	/**
-	 * Returns the BLOB service's directory for incoming files. The directory is created if it did
-	 * not exist so far.
+	 * Returns the BLOB service's directory for incoming files of the given job. The directory is
+	 * created if it did not exist so far.
 	 *
-	 * @return the BLOB server's directory for incoming files
+	 * @param storageDir
+	 * 		storage directory used be the BLOB service
+	 * @param jobId
+	 * 		ID of the job for the incoming files
+	 *
+	 * @return the BLOB service's directory for incoming files
 	 */
-	static File getIncomingDirectory(File storageDir) {
-		final File incomingDir = new File(storageDir, "incoming");
+	static File getIncomingDirectory(File storageDir, JobID jobId) {
+		final File incomingDir = new File(storageDir, jobId + "/incoming");
 
 		if (!incomingDir.mkdirs() && !incomingDir.exists()) {
 			throw new RuntimeException("Cannot create directory for incoming files " + incomingDir.getAbsolutePath());
@@ -170,58 +178,79 @@ public class BlobUtils {
 	}
 
 	/**
-	 * Returns the BLOB service's directory for cached files. The directory is created if it did
-	 * not exist so far.
+	 * Returns the (designated) physical storage location of the BLOB with the given key.
 	 *
-	 * @return the BLOB server's directory for cached files
+	 * @param storageDir
+	 * 		storage directory used be the BLOB service
+	 * @param key
+	 * 		the key identifying the BLOB
+	 * @param jobId
+	 * 		ID of the job for the incoming files
+	 *
+	 * @return the (designated) physical storage location of the BLOB
 	 */
-	private static File getCacheDirectory(File storageDir) {
-		final File cacheDirectory = new File(storageDir, "cache");
+	static File getStorageLocation(File storageDir, JobID jobId, BlobKey key) {
+		final File cacheDirectory = getStorageLocationPath(storageDir, jobId);
 
 		if (!cacheDirectory.mkdirs() && !cacheDirectory.exists()) {
 			throw new RuntimeException("Could not create cache directory '" + cacheDirectory.getAbsolutePath() + "'.");
 		}
 
-		return cacheDirectory;
+		return new File(cacheDirectory, BLOB_FILE_PREFIX + key.toString());
 	}
 
 	/**
-	 * Returns the (designated) physical storage location of the BLOB with the given key.
+	 * Returns the BLOB server's storage directory for BLOBs belonging to the job with the given ID
+	 * <em>without</em> creating the directory.
 	 *
-	 * @param key
-	 *        the key identifying the BLOB
-	 * @return the (designated) physical storage location of the BLOB
-	 */
-	static File getStorageLocation(File storageDir, BlobKey key) {
-		return new File(getCacheDirectory(storageDir), BLOB_FILE_PREFIX + key.toString());
-	}
-
-	/**
-	 * Returns the BLOB server's storage directory for BLOBs belonging to the job with the given ID.
+	 * @param storageDir
+	 * 		storage directory used be the BLOB service
+	 * @param jobId
+	 * 		the ID of the job to return the storage directory for
 	 *
-	 * @param jobID
-	 *        the ID of the job to return the storage directory for
 	 * @return the storage directory for BLOBs belonging to the job with the given ID
 	 */
-	private static File getJobDirectory(File storageDir, JobID jobID) {
-		final File jobDirectory = new File(storageDir, JOB_DIR_PREFIX + jobID.toString());
-
-		if (!jobDirectory.mkdirs() && !jobDirectory.exists()) {
-			throw new RuntimeException("Could not create jobId directory '" + jobDirectory.getAbsolutePath() + "'.");
-		}
-
-		return jobDirectory;
+	private static File getStorageLocationPath(File storageDir, JobID jobId) {
+		return new File(storageDir, JOB_DIR_PREFIX + jobId.toString());
 	}
 
 	/**
-	 * Deletes the storage directory for the job with the given ID.
+	 * Returns the BLOB server's storage directory for BLOBs belonging to the job with the given ID
+	 * <em>without</em> creating the directory.
 	 *
-	 * @param jobID
-	 *			jobID whose directory shall be deleted
+	 * @param storageDir
+	 * 		storage directory used be the BLOB service
+	 * @param jobId
+	 * 		the ID of the job to return the storage directory for
+	 *
+	 * @return the storage directory for BLOBs belonging to the job with the given ID
 	 */
-	static void deleteJobDirectory(File storageDir, JobID jobID) throws IOException {
-		File directory = getJobDirectory(storageDir, jobID);
-		FileUtils.deleteDirectory(directory);
+	static String getStorageLocationPath(String storageDir, JobID jobId) {
+		// format: $base/job_$jobId
+		return String.format("%s/%s%s/%s%s", storageDir, JOB_DIR_PREFIX, jobId.toString());
+	}
+
+	/**
+	 * Returns the path for the given blob key.
+	 * <p>
+	 * The returned path can be used with the (local or HA) BLOB store file system back-end for
+	 * recovery purposes and follows the same scheme as {@link #getStorageLocation(File, JobID,
+	 * BlobKey)}.
+	 *
+	 * @param storageDir
+	 * 		storage directory used be the BLOB service
+	 * @param key
+	 * 		the key identifying the BLOB
+	 * @param jobId
+	 * 		ID of the job for the incoming files
+	 *
+	 * @return the path to the given BLOB
+	 */
+	static String getStorageLocationPath(String storageDir, JobID jobId, BlobKey key) {
+		// format: $base/job_$jobId/blob_$key
+		return String.format("%s/%s%s/%s%s",
+			storageDir, JOB_DIR_PREFIX,
+			jobId.toString(), BLOB_FILE_PREFIX, key.toString());
 	}
 
 	/**
@@ -229,6 +258,7 @@ public class BlobUtils {
 	 *
 	 * @return a new instance of the message digest to use for the BLOB key computation
 	 */
+	@Nonnull
 	static MessageDigest createMessageDigest() {
 		try {
 			return MessageDigest.getInstance(HASHING_ALGORITHM);
@@ -359,28 +389,6 @@ public class BlobUtils {
 				}
 			}
 		}
-	}
-
-	/**
-	 * Returns the path for the given blob key.
-	 *
-	 * <p>The returned path can be used with the state backend for recovery purposes.
-	 *
-	 * <p>This follows the same scheme as {@link #getStorageLocation(File, BlobKey)}
-	 * and is used for HA.
-	 */
-	static String getRecoveryPath(String basePath, BlobKey blobKey) {
-		// format: $base/cache/blob_$key
-		return String.format("%s/cache/%s%s", basePath, BLOB_FILE_PREFIX, blobKey.toString());
-	}
-
-	/**
-	 * Returns the path for the given job ID.
-	 *
-	 * <p>The returned path can be used with the state backend for recovery purposes.
-	 */
-	static String getRecoveryPath(String basePath, JobID jobId) {
-		return String.format("%s/%s%s", basePath, JOB_DIR_PREFIX, jobId.toString());
 	}
 
 	/**

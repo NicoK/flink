@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.highavailability;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.blob.BlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
@@ -123,7 +123,7 @@ public interface HighAvailabilityServices extends AutoCloseable {
 	 * @return Blob store
 	 * @throws IOException if the blob store could not be created
 	 */
-	BlobStore createBlobStore() throws IOException;
+	DistributedBlobStore createBlobStore() throws IOException;
 
 	// ------------------------------------------------------------------------
 	//  Shutdown and Cleanup

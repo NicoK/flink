@@ -41,9 +41,9 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>This is used in addition to the local blob storage for high availability.
  */
-public class FileSystemBlobStore implements BlobStoreService {
+public class FileSystemDistributedBlobStore implements DistributedBlobStoreService {
 
-	private static final Logger LOG = LoggerFactory.getLogger(FileSystemBlobStore.class);
+	private static final Logger LOG = LoggerFactory.getLogger(FileSystemDistributedBlobStore.class);
 
 	/** The file system in which blobs are stored */
 	private final FileSystem fileSystem;
@@ -51,7 +51,7 @@ public class FileSystemBlobStore implements BlobStoreService {
 	/** The base path of the blob store */
 	private final String basePath;
 
-	public FileSystemBlobStore(FileSystem fileSystem, String storagePath) throws IOException {
+	public FileSystemDistributedBlobStore(FileSystem fileSystem, String storagePath) throws IOException {
 		this.fileSystem = checkNotNull(fileSystem);
 		this.basePath = checkNotNull(storagePath) + "/blob";
 
@@ -64,12 +64,12 @@ public class FileSystemBlobStore implements BlobStoreService {
 	// - Put ------------------------------------------------------------------
 
 	@Override
-	public void put(File localFile, BlobKey blobKey) throws IOException {
-		put(localFile, BlobUtils.getRecoveryPath(basePath, blobKey));
+	public void upload(File localFile, JobID jobId, BlobKey blobKey) throws IOException {
+		upload(localFile, BlobUtils.getStorageLocationPath(basePath, jobId, blobKey));
 	}
 
-	private void put(File fromFile, String toBlobPath) throws IOException {
-		try (OutputStream os = fileSystem.create(new Path(toBlobPath), true)) {
+	private void upload(File fromFile, String toBlobPath) throws IOException {
+		try (OutputStream os = fileSystem.create(new Path(toBlobPath), FileSystem.WriteMode.OVERWRITE)) {
 			LOG.debug("Copying from {} to {}.", fromFile, toBlobPath);
 			Files.copy(fromFile, os);
 		}
@@ -78,8 +78,8 @@ public class FileSystemBlobStore implements BlobStoreService {
 	// - Get ------------------------------------------------------------------
 
 	@Override
-	public void get(BlobKey blobKey, File localFile) throws IOException {
-		get(BlobUtils.getRecoveryPath(basePath, blobKey), localFile);
+	public void download(JobID jobId, BlobKey blobKey, File localFile) throws IOException {
+		get(BlobUtils.getStorageLocationPath(basePath, jobId, blobKey), localFile);
 	}
 
 	private void get(String fromBlobPath, File toFile) throws IOException {
@@ -102,9 +102,9 @@ public class FileSystemBlobStore implements BlobStoreService {
 			// if the copy fails, we need to remove the target file because
 			// outside code relies on a correct file as long as it exists
 			if (!success) {
-				try {
-					toFile.delete();
-				} catch (Throwable ignored) {}
+				if (!toFile.delete() && toFile.exists()) {
+					LOG.warn("Could not delete incomplete local staging file {}.", toFile.getAbsolutePath());
+				}
 			}
 		}
 	}
@@ -112,23 +112,25 @@ public class FileSystemBlobStore implements BlobStoreService {
 	// - Delete ---------------------------------------------------------------
 
 	@Override
-	public void delete(BlobKey blobKey) {
-		delete(BlobUtils.getRecoveryPath(basePath, blobKey));
+	public boolean delete(JobID jobId, BlobKey blobKey) {
+		return delete(BlobUtils.getStorageLocationPath(basePath, jobId, blobKey));
 	}
 
 	@Override
-	public void deleteAll(JobID jobId) {
-		delete(BlobUtils.getRecoveryPath(basePath, jobId));
+	public boolean deleteAll(JobID jobId) {
+		return delete(BlobUtils.getStorageLocationPath(basePath, jobId));
 	}
 
-	private void delete(String blobPath) {
+	private boolean delete(String blobPath) {
+		boolean success = false;
 		try {
 			LOG.debug("Deleting {}.", blobPath);
 			
 			Path path = new Path(blobPath);
 
-			fileSystem.delete(path, true);
+			success = fileSystem.delete(path, true);
 
+			// TODO: remove these calls
 			// send a call to delete the directory containing the file. This will
 			// fail (and be ignored) when some files still exist.
 			try {
@@ -139,6 +141,8 @@ public class FileSystemBlobStore implements BlobStoreService {
 		catch (Exception e) {
 			LOG.warn("Failed to delete blob at " + blobPath);
 		}
+
+		return success;
 	}
 
 	@Override
@@ -155,6 +159,6 @@ public class FileSystemBlobStore implements BlobStoreService {
 
 	@Override
 	public void close() throws IOException {
-		// nothing to do for the FileSystemBlobStore
+		// nothing to do for the FileSystemDistributedBlobStore
 	}
 }

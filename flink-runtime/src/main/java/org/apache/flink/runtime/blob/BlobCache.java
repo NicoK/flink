@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.FileUtils;
@@ -25,12 +26,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.URL;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -38,12 +39,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * The BLOB cache implements a local cache for content-addressable BLOBs.
- *
- * <p>When requesting BLOBs through the {@link BlobCache#getURL} methods, the
- * BLOB cache will first attempt to serve the file from its local cache. Only if
- * the local cache does not contain the desired BLOB, the BLOB cache will try to
- * download it from a distributed file system (if available) or the BLOB
- * server.</p>
+ * <p>
+ * When requesting BLOBs through the {@link BlobCache#getFile(JobID, BlobKey)} method, the BLOB cache
+ * will first attempt to serve the file from its local cache. Only if the local cache does not
+ * contain the desired BLOB or a checksum verification fails, the BLOB cache will try to download it
+ * from a distributed file system (if available) or the BLOB server.
  */
 public final class BlobCache implements BlobService {
 
@@ -56,7 +56,7 @@ public final class BlobCache implements BlobService {
 	private final File storageDir;
 
 	/** Blob store for distributed file storage, e.g. in HA */
-	private final BlobView blobView;
+	private final ReadOnlyDistributedBlobStore blobView;
 
 	private final AtomicBoolean shutdownRequested = new AtomicBoolean();
 
@@ -85,14 +85,14 @@ public final class BlobCache implements BlobService {
 	public BlobCache(
 			final InetSocketAddress serverAddress,
 			final Configuration blobClientConfig,
-			final BlobView blobView) throws IOException {
+			final ReadOnlyDistributedBlobStore blobView) throws IOException {
 		this.serverAddress = checkNotNull(serverAddress);
 		this.blobClientConfig = checkNotNull(blobClientConfig);
 		this.blobView = checkNotNull(blobView, "blobStore");
 
 		// configure and create the storage directory
 		String storageDirectory = blobClientConfig.getString(BlobServerOptions.STORAGE_DIRECTORY);
-		this.storageDir = BlobUtils.initStorageDirectory(storageDirectory);
+		this.storageDir = BlobUtils.initLocalStorageDirectory(storageDirectory);
 		LOG.info("Created BLOB cache storage directory " + storageDir);
 
 		// configure the number of fetch retries
@@ -111,44 +111,55 @@ public final class BlobCache implements BlobService {
 	}
 
 	/**
-	 * Returns the URL for the BLOB with the given key. The method will first attempt to serve
-	 * the BLOB from its local cache. If the BLOB is not in the cache, the method will try to download it
-	 * from this cache's BLOB server.
+	 * Returns a local copy of the file associated with the provided blob key. The method will first
+	 * attempt to serve the BLOB from its local cache. If the BLOB is not in the cache, the method
+	 * will try to download it from the BLOB server directly or via a configured HA store.
+	 * <p>
+	 * This will count as one entity using the file which must release it via {@link
+	 * #releaseFile(JobID, BlobKey)} after use.
 	 *
-	 * @param requiredBlob The key of the desired BLOB.
-	 * @return URL referring to the local storage location of the BLOB.
-	 * @throws IOException Thrown if an I/O error occurs while downloading the BLOBs from the BLOB server.
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param key
+	 * 		blob key associated with the requested file
+	 *
+	 * @throws FileNotFoundException
+	 * 		if there is no such file;
+	 * @throws IOException
+	 * 		if any other error occurs when retrieving the file
 	 */
-	public URL getURL(final BlobKey requiredBlob) throws IOException {
-		checkArgument(requiredBlob != null, "BLOB key cannot be null.");
+	@Override
+	public File getFile(JobID jobId, BlobKey key) throws IOException {
+		checkArgument(key != null, "BLOB key cannot be null.");
 
-		final File localJarFile = BlobUtils.getStorageLocation(storageDir, requiredBlob);
+		final File localJarFile = BlobUtils.getStorageLocation(storageDir, jobId, key);
 
 		if (localJarFile.exists()) {
-			return localJarFile.toURI().toURL();
+			// TODO: verify checksum?
+			return localJarFile;
 		}
 
 		// first try the distributed blob store (if available)
 		try {
-			blobView.get(requiredBlob, localJarFile);
+			blobView.download(jobId, key, localJarFile);
 		} catch (Exception e) {
 			LOG.info("Failed to copy from blob store. Downloading from BLOB server instead.", e);
 		}
 
 		if (localJarFile.exists()) {
-			return localJarFile.toURI().toURL();
+			return localJarFile;
 		}
 
 		// fallback: download from the BlobServer
 		final byte[] buf = new byte[BlobServerProtocol.BUFFER_SIZE];
-		LOG.info("Downloading {} from {}", requiredBlob, serverAddress);
+		LOG.info("Downloading {} from {}", key, serverAddress);
 
 		// loop over retries
 		int attempt = 0;
 		while (true) {
 			try (
 				final BlobClient bc = new BlobClient(serverAddress, blobClientConfig);
-				final InputStream is = bc.get(requiredBlob);
+				final InputStream is = bc.get(key);
 				final OutputStream os = new FileOutputStream(localJarFile)
 			) {
 				while (true) {
@@ -160,10 +171,10 @@ public final class BlobCache implements BlobService {
 				}
 
 				// success, we finished
-				return localJarFile.toURI().toURL();
+				return localJarFile;
 			}
 			catch (Throwable t) {
-				String message = "Failed to fetch BLOB " + requiredBlob + " from " + serverAddress +
+				String message = "Failed to fetch BLOB " + key + " from " + serverAddress +
 					" and store it under " + localJarFile.getAbsolutePath();
 				if (attempt < numFetchRetries) {
 					if (LOG.isDebugEnabled()) {
@@ -179,37 +190,48 @@ public final class BlobCache implements BlobService {
 
 				// retry
 				++attempt;
-				LOG.info("Downloading {} from {} (retry {})", requiredBlob, serverAddress, attempt);
+				LOG.info("Downloading {} from {} (retry {})", key, serverAddress, attempt);
 			}
 		} // end loop over retries
+	}
+
+	@Override
+	public void releaseFile(final JobID jobId, final BlobKey key) {
+		// TODO
 	}
 
 	/**
 	 * Deletes the file associated with the given key from the BLOB cache.
 	 * @param key referring to the file to be deleted
 	 */
-	public void delete(BlobKey key) throws IOException{
-		final File localFile = BlobUtils.getStorageLocation(storageDir, key);
+	@Override
+	public boolean delete(JobID jobId, BlobKey key) {
+		final File localFile = BlobUtils.getStorageLocation(storageDir, jobId, key);
 
 		if (!localFile.delete() && localFile.exists()) {
 			LOG.warn("Failed to delete locally cached BLOB {} at {}", key, localFile.getAbsolutePath());
+			return false;
 		}
+
+		return true;
 	}
 
 	/**
 	 * Deletes the file associated with the given key from the BLOB cache and
 	 * BLOB server.
 	 *
+	 * TODO: remove this function?
+	 *
 	 * @param key referring to the file to be deleted
 	 * @throws IOException
 	 *         thrown if an I/O error occurs while transferring the request to
 	 *         the BLOB server or if the BLOB server cannot delete the file
 	 */
-	public void deleteGlobal(BlobKey key) throws IOException {
+	public void deleteGlobal(JobID jobId, BlobKey key) throws IOException {
 		// delete locally
-		delete(key);
+		delete(jobId, key);
 		// then delete on the BLOB server
-		// (don't use the distributed storage directly - this way the blob
+		// (can't use the distributed storage directly - this way the blob
 		// server is aware of the delete operation, too)
 		try (BlobClient bc = createClient()) {
 			bc.delete(key);
@@ -217,8 +239,8 @@ public final class BlobCache implements BlobService {
 	}
 
 	@Override
-	public int getPort() {
-		return serverAddress.getPort();
+	public InetSocketAddress getAddress() {
+		return serverAddress;
 	}
 
 	@Override
@@ -244,11 +266,11 @@ public final class BlobCache implements BlobService {
 		}
 	}
 
-	@Override
 	public BlobClient createClient() throws IOException {
 		return new BlobClient(serverAddress, blobClientConfig);
 	}
 
+	// TODO: remove?
 	public File getStorageDir() {
 		return this.storageDir;
 	}

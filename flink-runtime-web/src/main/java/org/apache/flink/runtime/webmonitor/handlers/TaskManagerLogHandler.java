@@ -32,7 +32,7 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobCache;
 import org.apache.flink.runtime.blob.BlobKey;
-import org.apache.flink.runtime.blob.BlobView;
+import org.apache.flink.runtime.blob.ReadOnlyDistributedBlobStore;
 import org.apache.flink.runtime.concurrent.AcceptFunction;
 import org.apache.flink.runtime.concurrent.ApplyFunction;
 import org.apache.flink.runtime.concurrent.BiFunction;
@@ -120,7 +120,7 @@ public class TaskManagerLogHandler extends RuntimeMonitorHandlerBase {
 
 	private final Time timeTimeout;
 
-	private final BlobView blobView;
+	private final ReadOnlyDistributedBlobStore blobView;
 
 	/** Used to control whether this handler serves the .log or .out file. */
 	public enum FileMode {
@@ -136,7 +136,7 @@ public class TaskManagerLogHandler extends RuntimeMonitorHandlerBase {
 		FileMode fileMode,
 		Configuration config,
 		boolean httpsEnabled,
-		BlobView blobView) {
+		ReadOnlyDistributedBlobStore blobView) {
 		super(retriever, localJobManagerAddressPromise, timeout, httpsEnabled);
 
 		this.executor = checkNotNull(executor);

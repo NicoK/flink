@@ -26,7 +26,7 @@ import org.apache.flink.runtime.blob.BlobCache;
 import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobServer;
-import org.apache.flink.runtime.blob.BlobStoreService;
+import org.apache.flink.runtime.blob.DistributedBlobStoreService;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
@@ -65,7 +65,7 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 		BlobLibraryCacheManager[] libServer = new BlobLibraryCacheManager[2];
 		BlobCache cache = null;
 		BlobLibraryCacheManager libCache = null;
-		BlobStoreService blobStoreService = null;
+		DistributedBlobStoreService blobStoreService = null;
 
 		Configuration config = new Configuration();
 		config.setString(HighAvailabilityOptions.HA_MODE, "ZOOKEEPER");

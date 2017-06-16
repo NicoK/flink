@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.highavailability;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.blob.BlobStore;
-import org.apache.flink.runtime.blob.VoidBlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStore;
+import org.apache.flink.runtime.blob.VoidDistributedBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneRunningJobsRegistry;
@@ -90,8 +90,8 @@ public class TestingManualHighAvailabilityServices implements HighAvailabilitySe
 	}
 
 	@Override
-	public BlobStore createBlobStore() throws IOException {
-		return new VoidBlobStore();
+	public DistributedBlobStore createBlobStore() throws IOException {
+		return new VoidDistributedBlobStore();
 	}
 
 	@Override

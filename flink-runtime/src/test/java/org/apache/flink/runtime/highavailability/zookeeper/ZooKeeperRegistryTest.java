@@ -22,7 +22,7 @@ import org.apache.curator.test.TestingServer;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
-import org.apache.flink.runtime.blob.VoidBlobStore;
+import org.apache.flink.runtime.blob.VoidDistributedBlobStore;
 import org.apache.flink.runtime.concurrent.Executors;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
@@ -65,7 +65,7 @@ public class ZooKeeperRegistryTest extends TestLogger {
 				ZooKeeperUtils.startCuratorFramework(configuration),
 			Executors.directExecutor(),
 			configuration,
-			new VoidBlobStore());
+			new VoidDistributedBlobStore());
 
 		final RunningJobsRegistry zkRegistry = zkHaService.getRunningJobsRegistry();
 

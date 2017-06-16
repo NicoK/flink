@@ -36,7 +36,7 @@ import org.apache.flink.metrics.groups.UnregisteredMetricsGroup
 import org.apache.flink.metrics.{Gauge, MetricGroup}
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.akka.{AkkaUtils, ListeningBehaviour}
-import org.apache.flink.runtime.blob.{BlobServer, BlobStore}
+import org.apache.flink.runtime.blob.{BlobServer, DistributedBlobStore}
 import org.apache.flink.runtime.checkpoint._
 import org.apache.flink.runtime.checkpoint.savepoint.{SavepointLoader, SavepointStore}
 import org.apache.flink.runtime.client._
@@ -2512,7 +2512,7 @@ object JobManager {
       configuration: Configuration,
       futureExecutor: ScheduledExecutorService,
       ioExecutor: Executor,
-      blobStore: BlobStore) :
+      blobStore: DistributedBlobStore) :
     (InstanceManager,
     FlinkScheduler,
     BlobLibraryCacheManager,

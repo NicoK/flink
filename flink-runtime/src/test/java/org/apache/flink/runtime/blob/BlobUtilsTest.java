@@ -60,7 +60,7 @@ public class BlobUtilsTest {
 	public void testExceptionOnCreateStorageDirectoryFailure() throws
 		IOException {
 		// Should throw an Exception
-		BlobUtils.initStorageDirectory(new File(blobUtilsTestDirectory, CANNOT_CREATE_THIS).getAbsolutePath());
+		BlobUtils.initLocalStorageDirectory(new File(blobUtilsTestDirectory, CANNOT_CREATE_THIS).getAbsolutePath());
 	}
 
 	@Test(expected = Exception.class)

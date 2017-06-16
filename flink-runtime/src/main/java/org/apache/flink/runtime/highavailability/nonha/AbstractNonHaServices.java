@@ -18,8 +18,8 @@
 
 package org.apache.flink.runtime.highavailability.nonha;
 
-import org.apache.flink.runtime.blob.BlobStore;
-import org.apache.flink.runtime.blob.VoidBlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStore;
+import org.apache.flink.runtime.blob.VoidDistributedBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -44,13 +44,13 @@ public abstract class AbstractNonHaServices implements HighAvailabilityServices 
 
 	private final RunningJobsRegistry runningJobsRegistry;
 
-	private final VoidBlobStore voidBlobStore;
+	private final VoidDistributedBlobStore voidBlobStore;
 
 	private boolean shutdown;
 
 	public AbstractNonHaServices() {
 		this.runningJobsRegistry = new StandaloneRunningJobsRegistry();
-		this.voidBlobStore = new VoidBlobStore();
+		this.voidBlobStore = new VoidDistributedBlobStore();
 
 		shutdown = false;
 	}
@@ -87,7 +87,7 @@ public abstract class AbstractNonHaServices implements HighAvailabilityServices 
 	}
 
 	@Override
-	public BlobStore createBlobStore() throws IOException {
+	public DistributedBlobStore createBlobStore() throws IOException {
 		synchronized (lock) {
 			checkNotShutdown();
 

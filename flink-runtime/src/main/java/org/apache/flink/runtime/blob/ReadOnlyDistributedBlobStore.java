@@ -18,15 +18,28 @@
 
 package org.apache.flink.runtime.blob;
 
-import java.io.Closeable;
+import org.apache.flink.api.common.JobID;
+
+import java.io.File;
+import java.io.IOException;
 
 /**
- * Service interface for the BlobStore which allows to close and clean up its data.
+ * Read-only view on blobs stored in a {@link DistributedBlobStore}.
  */
-public interface BlobStoreService extends BlobStore, Closeable {
+public interface ReadOnlyDistributedBlobStore {
 
 	/**
-	 * Closes and cleans up the store. This entails the deletion of all blobs.
+	 * Copies a blob to a local file.
+	 *
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param blobKey
+	 * 		The blob ID
+	 * @param localTargetFile
+	 * 		The local file to copy to
+	 *
+	 * @throws IOException
+	 * 		if the copy fails
 	 */
-	void closeAndCleanupAllData();
+	void download(JobID jobId, BlobKey blobKey, File localTargetFile) throws IOException;
 }

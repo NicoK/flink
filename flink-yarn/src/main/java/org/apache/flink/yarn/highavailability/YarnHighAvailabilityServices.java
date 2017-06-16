@@ -22,9 +22,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.runtime.blob.BlobStore;
-import org.apache.flink.runtime.blob.BlobStoreService;
-import org.apache.flink.runtime.blob.FileSystemBlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStore;
+import org.apache.flink.runtime.blob.DistributedBlobStoreService;
+import org.apache.flink.runtime.blob.FileSystemDistributedBlobStore;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
@@ -93,7 +93,7 @@ public abstract class YarnHighAvailabilityServices implements HighAvailabilitySe
 	protected final Path haDataDirectory;
 
 	/** Blob store service to be used for the BlobServer and BlobCache. */
-	protected final BlobStoreService blobStoreService;
+	protected final DistributedBlobStoreService blobStoreService;
 
 	/** Flag marking this instance as shut down. */
 	private volatile boolean closed;
@@ -158,7 +158,7 @@ public abstract class YarnHighAvailabilityServices implements HighAvailabilitySe
 
 		LOG.info("Flink YARN application will store recovery data at {}", haDataDirectory);
 
-		blobStoreService = new FileSystemBlobStore(flinkFileSystem, haDataDirectory.toString());
+		blobStoreService = new FileSystemDistributedBlobStore(flinkFileSystem, haDataDirectory.toString());
 	}
 
 	// ------------------------------------------------------------------------
@@ -166,7 +166,7 @@ public abstract class YarnHighAvailabilityServices implements HighAvailabilitySe
 	// ------------------------------------------------------------------------
 
 	@Override
-	public BlobStore createBlobStore() throws IOException {
+	public DistributedBlobStore createBlobStore() throws IOException {
 		enter();
 		try {
 			return blobStoreService;

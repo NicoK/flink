@@ -57,7 +57,7 @@ public class BlobServerDeleteTest extends TestLogger {
 	public void testDeleteSingleByBlobKey() {
 		BlobServer server = null;
 		BlobClient client = null;
-		BlobStore blobStore = new VoidBlobStore();
+		DistributedBlobStore blobStore = new VoidDistributedBlobStore();
 
 		try {
 			Configuration config = new Configuration();
@@ -123,7 +123,7 @@ public class BlobServerDeleteTest extends TestLogger {
 	public void testDeleteAll() {
 		BlobServer server = null;
 		BlobClient client = null;
-		BlobStore blobStore = new VoidBlobStore();
+		DistributedBlobStore blobStore = new VoidDistributedBlobStore();
 
 		try {
 			Configuration config = new Configuration();
@@ -160,7 +160,7 @@ public class BlobServerDeleteTest extends TestLogger {
 	public void testDeleteAlreadyDeletedByBlobKey() {
 		BlobServer server = null;
 		BlobClient client = null;
-		BlobStore blobStore = new VoidBlobStore();
+		DistributedBlobStore blobStore = new VoidDistributedBlobStore();
 
 		try {
 			Configuration config = new Configuration();
@@ -205,7 +205,7 @@ public class BlobServerDeleteTest extends TestLogger {
 
 		BlobServer server = null;
 		BlobClient client = null;
-		BlobStore blobStore = new VoidBlobStore();
+		DistributedBlobStore blobStore = new VoidDistributedBlobStore();
 
 		File blobFile = null;
 		File directory = null;
@@ -262,7 +262,7 @@ public class BlobServerDeleteTest extends TestLogger {
 	@Test
 	public void testConcurrentDeleteOperations() throws IOException, ExecutionException, InterruptedException {
 		final Configuration configuration = new Configuration();
-		final BlobStore blobStore = mock(BlobStore.class);
+		final DistributedBlobStore blobStore = mock(DistributedBlobStore.class);
 
 		final int concurrentDeleteOperations = 3;
 		final ExecutorService executor = Executors.newFixedThreadPool(concurrentDeleteOperations);

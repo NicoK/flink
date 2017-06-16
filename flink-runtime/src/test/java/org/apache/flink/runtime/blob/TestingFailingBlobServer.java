@@ -28,7 +28,7 @@ public class TestingFailingBlobServer extends BlobServer {
 
 	private int numFailures;
 
-	public TestingFailingBlobServer(Configuration config, BlobStore blobStore, int numFailures) throws IOException {
+	public TestingFailingBlobServer(Configuration config, DistributedBlobStore blobStore, int numFailures) throws IOException {
 		super(config, blobStore);
 		this.numFailures = numFailures;
 	}

@@ -90,7 +90,7 @@ public class BlobCacheSuccessTest {
 
 		BlobServer blobServer = null;
 		BlobCache blobCache = null;
-		BlobStoreService blobStoreService = null;
+		DistributedBlobStoreService blobStoreService = null;
 		try {
 			final Configuration cacheConfig;
 			if (cacheHasAccessToFs) {

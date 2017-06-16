@@ -33,7 +33,6 @@ import java.util.Collections;
 import java.util.List;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.fs.Path;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -59,7 +58,7 @@ public class BlobClientTest {
 	@BeforeClass
 	public static void startServer() throws IOException {
 		blobServiceConfig = new Configuration();
-		BLOB_SERVER = new BlobServer(blobServiceConfig, new VoidBlobStore());
+		BLOB_SERVER = new BlobServer(blobServiceConfig, new VoidDistributedBlobStore());
 	}
 
 	/**

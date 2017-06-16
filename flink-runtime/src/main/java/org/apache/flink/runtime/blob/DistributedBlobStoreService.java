@@ -18,40 +18,15 @@
 
 package org.apache.flink.runtime.blob;
 
-import org.apache.flink.api.common.JobID;
-
-import java.io.File;
-import java.io.IOException;
+import java.io.Closeable;
 
 /**
- * A blob store.
+ * Service interface for the DistributedBlobStore which allows to close and clean up its data.
  */
-public interface BlobStore extends BlobView {
+public interface DistributedBlobStoreService extends DistributedBlobStore, Closeable {
 
 	/**
-	 * Copies the local file to the blob store.
-	 *
-	 * @param localFile The file to copy
-	 * @param blobKey   The ID for the file in the blob store
-	 * @throws IOException If the copy fails
+	 * Closes and cleans up the store. This entails the deletion of all blobs.
 	 */
-	void put(File localFile, BlobKey blobKey) throws IOException;
-
-	/**
-	 * Tries to delete a blob from storage.
-	 *
-	 * <p>NOTE: This also tries to delete any created directories if empty.</p>
-	 *
-	 * @param blobKey The blob ID
-	 */
-	void delete(BlobKey blobKey);
-
-	/**
-	 * Tries to delete all blobs for the given job from storage.
-	 *
-	 * <p>NOTE: This also tries to delete any created directories if empty.</p>
-	 *
-	 * @param jobId The JobID part of all blobs to delete
-	 */
-	void deleteAll(JobID jobId);
+	void closeAndCleanupAllData();
 }

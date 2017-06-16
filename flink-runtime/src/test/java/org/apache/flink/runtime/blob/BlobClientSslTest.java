@@ -34,7 +34,6 @@ import java.util.List;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.util.TestLogger;
 import org.junit.AfterClass;
@@ -71,7 +70,7 @@ public class BlobClientSslTest extends TestLogger {
 		config.setString(ConfigConstants.SECURITY_SSL_KEYSTORE, "src/test/resources/local127.keystore");
 		config.setString(ConfigConstants.SECURITY_SSL_KEYSTORE_PASSWORD, "password");
 		config.setString(ConfigConstants.SECURITY_SSL_KEY_PASSWORD, "password");
-		BLOB_SSL_SERVER = new BlobServer(config, new VoidBlobStore());
+		BLOB_SSL_SERVER = new BlobServer(config, new VoidDistributedBlobStore());
 
 
 		sslClientConfig = new Configuration();
@@ -91,7 +90,7 @@ public class BlobClientSslTest extends TestLogger {
 		config.setString(ConfigConstants.SECURITY_SSL_KEYSTORE, "src/test/resources/local127.keystore");
 		config.setString(ConfigConstants.SECURITY_SSL_KEYSTORE_PASSWORD, "password");
 		config.setString(ConfigConstants.SECURITY_SSL_KEY_PASSWORD, "password");
-		BLOB_SERVER = new BlobServer(config, new VoidBlobStore());
+		BLOB_SERVER = new BlobServer(config, new VoidDistributedBlobStore());
 
 		clientConfig = new Configuration();
 		clientConfig.setBoolean(ConfigConstants.SECURITY_SSL_ENABLED, true);

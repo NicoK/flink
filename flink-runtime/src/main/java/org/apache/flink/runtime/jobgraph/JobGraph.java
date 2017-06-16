@@ -22,8 +22,6 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.fs.FSDataInputStream;
-import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.BlobKey;
@@ -34,7 +32,6 @@ import scala.concurrent.duration.FiniteDuration;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.InetSocketAddress;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -527,49 +524,6 @@ public class JobGraph implements Serializable {
 	}
 
 	/**
-	 * Uploads the previously added user jar file to the job manager through the job manager's BLOB server.
-	 *
-	 * @param serverAddress
-	 *        the network address of the BLOB server
-	 * @param blobClientConfig
-	 *        the blob client configuration
-	 * @throws IOException
-	 *         thrown if an I/O error occurs during the upload
-	 */
-	public void uploadRequiredJarFiles(InetSocketAddress serverAddress,
-			Configuration blobClientConfig) throws IOException {
-		if (this.userJars.isEmpty()) {
-			return;
-		}
-
-		BlobClient bc = null;
-		try {
-			bc = new BlobClient(serverAddress, blobClientConfig);
-
-			for (final Path jar : this.userJars) {
-
-				final FileSystem fs = jar.getFileSystem();
-				FSDataInputStream is = null;
-				try {
-					is = fs.open(jar);
-					final BlobKey key = bc.put(is);
-					this.userJarBlobKeys.add(key);
-				}
-				finally {
-					if (is != null) {
-						is.close();
-					}
-				}
-			}
-		}
-		finally {
-			if (bc != null) {
-				bc.close();
-			}
-		}
-	}
-
-	/**
 	 * Uploads the previously added user JAR files to the job manager through
 	 * the job manager's BLOB server. The respective port is retrieved from the
 	 * JobManager. This function issues a blocking call.
@@ -581,7 +535,7 @@ public class JobGraph implements Serializable {
 	 */
 	public void uploadUserJars(ActorGateway jobManager, FiniteDuration askTimeout,
 			Configuration blobClientConfig) throws IOException {
-		List<BlobKey> blobKeys = BlobClient.uploadJarFiles(jobManager, askTimeout, blobClientConfig, userJars);
+		List<BlobKey> blobKeys = BlobClient.uploadJarFiles(jobManager, askTimeout, blobClientConfig, jobID, userJars);
 
 		for (BlobKey blobKey : blobKeys) {
 			if (!userJarBlobKeys.contains(blobKey)) {
