@@ -210,7 +210,7 @@ public class BlobUtils {
 	 *
 	 * @return the storage directory for BLOBs belonging to the job with the given ID
 	 */
-	private static File getStorageLocationPath(File storageDir, JobID jobId) {
+	static File getStorageLocationPath(File storageDir, JobID jobId) {
 		return new File(storageDir, JOB_DIR_PREFIX + jobId.toString());
 	}
 

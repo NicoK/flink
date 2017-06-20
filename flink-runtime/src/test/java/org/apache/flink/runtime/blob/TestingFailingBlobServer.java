@@ -28,7 +28,7 @@ public class TestingFailingBlobServer extends BlobServer {
 
 	private int numFailures;
 
-	public TestingFailingBlobServer(Configuration config, DistributedBlobStore blobStore, int numFailures) throws IOException {
+	TestingFailingBlobServer(Configuration config, DistributedBlobStore blobStore, int numFailures) throws IOException {
 		super(config, blobStore);
 		this.numFailures = numFailures;
 	}
@@ -57,13 +57,13 @@ public class TestingFailingBlobServer extends BlobServer {
 				os.close();
 				socket.close();
 			}
-			catch (IOException e) {
+			catch (IOException ignored) {
 			}
 			finally {
 				if (socket != null) {
 					try {
 						socket.close();
-					} catch(Throwable t) {}
+					} catch(Throwable ignored) {}
 				}
 			}
 		}

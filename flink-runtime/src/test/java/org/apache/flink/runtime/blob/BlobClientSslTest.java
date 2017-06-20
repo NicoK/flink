@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.blob;
 
+import static org.apache.flink.runtime.blob.BlobClientTest.prepareTestFile;
+import static org.apache.flink.runtime.blob.BlobClientTest.validateGet;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
@@ -44,9 +46,6 @@ import org.junit.Test;
  * This class contains unit tests for the {@link BlobClient} with ssl enabled.
  */
 public class BlobClientSslTest extends TestLogger {
-
-	/** The buffer size used during the tests in bytes. */
-	private static final int TEST_BUFFER_SIZE = 17 * 1000;
 
 	/** The instance of the SSL BLOB server used during the tests. */
 	private static BlobServer BLOB_SSL_SERVER;
@@ -111,81 +110,6 @@ public class BlobClientSslTest extends TestLogger {
 		if (BLOB_SERVER != null) {
 			BLOB_SERVER.close();
 		}
-	}
-
-	/**
-	 * Prepares a test file for the unit tests, i.e. the methods fills the file with a particular byte patterns and
-	 * computes the file's BLOB key.
-	 *
-	 * @param file
-	 *        the file to prepare for the unit tests
-	 * @return the BLOB key of the prepared file
-	 * @throws IOException
-	 *         thrown if an I/O error occurs while writing to the test file
-	 */
-	private static BlobKey prepareTestFile(File file) throws IOException {
-
-		MessageDigest md = BlobUtils.createMessageDigest();
-
-		final byte[] buf = new byte[TEST_BUFFER_SIZE];
-		for (int i = 0; i < buf.length; ++i) {
-			buf[i] = (byte) (i % 128);
-		}
-
-		FileOutputStream fos = null;
-		try {
-			fos = new FileOutputStream(file);
-
-			for (int i = 0; i < 20; ++i) {
-				fos.write(buf);
-				md.update(buf);
-			}
-
-		} finally {
-			if (fos != null) {
-				fos.close();
-			}
-		}
-
-		return new BlobKey(md.digest());
-	}
-
-	/**
-	 * Validates the result of a GET operation by comparing the data from the retrieved input stream to the content of
-	 * the specified file.
-	 *
-	 * @param inputStream
-	 *        the input stream returned from the GET operation
-	 * @param file
-	 *        the file to compare the input stream's data to
-	 * @throws IOException
-	 *         thrown if an I/O error occurs while reading the input stream or the file
-	 */
-	private static void validateGet(final InputStream inputStream, final File file) throws IOException {
-
-		InputStream inputStream2 = null;
-		try {
-
-			inputStream2 = new FileInputStream(file);
-
-			while (true) {
-
-				final int r1 = inputStream.read();
-				final int r2 = inputStream2.read();
-
-				assertEquals(r2, r1);
-
-				if (r1 < 0) {
-					break;
-				}
-			}
-
-		} finally {
-			if (inputStream2 != null) {
-				inputStream2.close();
-			}
-		}
-
 	}
 
 	/**

@@ -675,7 +675,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 
 	@RpcMethod
 	public ClassloadingProps requestClassloadingProps() throws Exception {
-		return new ClassloadingProps(libraryCacheManager.getBlobServerPort(),
+		return new ClassloadingProps(libraryCacheManager.getBlobServerAddress().getPort(),
 				executionGraph.getRequiredJarFiles(),
 				executionGraph.getRequiredClasspaths());
 	}
@@ -751,7 +751,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 
 		if (registeredTaskManagers.containsKey(taskManagerId)) {
 			final RegistrationResponse response = new JMTMRegistrationSuccess(
-				resourceId, libraryCacheManager.getBlobServerPort());
+				resourceId, libraryCacheManager.getBlobServerAddress().getPort());
 			return FlinkCompletableFuture.completed(response);
 		} else {
 			return getRpcService().execute(new Callable<TaskExecutorGateway>() {
@@ -791,7 +791,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 						}
 					});
 
-					return new JMTMRegistrationSuccess(resourceId, libraryCacheManager.getBlobServerPort());
+					return new JMTMRegistrationSuccess(resourceId, libraryCacheManager.getBlobServerAddress().getPort());
 				}
 			}, getMainThreadExecutor());
 		}

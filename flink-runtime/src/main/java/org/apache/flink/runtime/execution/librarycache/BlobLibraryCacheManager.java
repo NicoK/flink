@@ -20,6 +20,7 @@ package org.apache.flink.runtime.execution.librarycache;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collection;
@@ -54,7 +55,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <strong>NOTE:</strong> this does not apply to files that enter the blob service via
  * {@link #getFile(BlobKey)}!
  */
-public final class BlobLibraryCacheManager extends TimerTask implements LibraryCacheManager {
+public final class BlobLibraryCacheManager implements LibraryCacheManager {
 
 	private static Logger LOG = LoggerFactory.getLogger(BlobLibraryCacheManager.class);
 	
@@ -67,9 +68,6 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 
 	/** Registered entries per job */
 	private final Map<JobID, LibraryCacheEntry> cacheEntries = new HashMap<JobID, LibraryCacheEntry>();
-	
-	/** Map to store the number of reference to a specific file */
-	private final Map<BlobKey, Integer> blobKeyReferenceCounters = new HashMap<BlobKey, Integer>();
 
 	/** The blob service to download libraries */
 	private final BlobService blobService;
@@ -95,9 +93,9 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 	// --------------------------------------------------------------------------------------------
 	
 	@Override
-	public void registerJob(JobID id, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths)
+	public void registerJob(JobID jobId, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths)
 			throws IOException {
-		registerTask(id, JOB_ATTEMPT_ID, requiredJarFiles, requiredClasspaths);
+		registerTask(jobId, JOB_ATTEMPT_ID, requiredJarFiles, requiredClasspaths);
 	}
 	
 	@Override
@@ -159,8 +157,8 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 	}
 
 	@Override
-	public void unregisterJob(JobID id) {
-		unregisterTask(id, JOB_ATTEMPT_ID);
+	public void unregisterJob(JobID jobId) {
+		unregisterTask(jobId, JOB_ATTEMPT_ID);
 	}
 	
 	@Override
@@ -187,17 +185,17 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 	}
 
 	@Override
-	public ClassLoader getClassLoader(JobID id) {
-		if (id == null) {
+	public ClassLoader getClassLoader(JobID jobId) {
+		if (jobId == null) {
 			throw new IllegalArgumentException("The JobId must not be null.");
 		}
 		
 		synchronized (lockObject) {
-			LibraryCacheEntry entry = cacheEntries.get(id);
+			LibraryCacheEntry entry = cacheEntries.get(jobId);
 			if (entry != null) {
 				return entry.getClassLoader();
 			} else {
-				throw new IllegalStateException("No libraries are registered for job " + id);
+				throw new IllegalStateException("No libraries are registered for job " + jobId);
 			}
 		}
 	}
@@ -214,12 +212,12 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 	 * @throws IOException if any error occurs when retrieving the file
 	 */
 	@Override
-	public File getFile(BlobKey blobKey) throws IOException {
-		return new File(blobService.getURL(blobKey).getFile());
+	public File getFile(JobID jobId, BlobKey blobKey) throws IOException {
+		return blobService.getFile(jobId, blobKey);
 	}
 
-	public int getBlobServerPort() {
-		return blobService.getPort();
+	public InetSocketAddress getBlobServerAddress() {
+		return blobService.getAddress();
 	}
 
 	@Override
@@ -232,31 +230,6 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 
 		blobService.close();
 		cleanupTimer.cancel();
-	}
-	
-	/**
-	 * Cleans up blobs which are not referenced anymore
-	 */
-	@Override
-	public void run() {
-		synchronized (lockObject) {
-			Iterator<Map.Entry<BlobKey, Integer>> entryIter = blobKeyReferenceCounters.entrySet().iterator();
-			
-			while (entryIter.hasNext()) {
-				Map.Entry<BlobKey, Integer> entry = entryIter.next();
-				BlobKey key = entry.getKey();
-				int references = entry.getValue();
-				
-				try {
-					if (references <= 0) {
-						blobService.delete(key);
-						entryIter.remove();
-					}
-				} catch (Throwable t) {
-					LOG.warn("Could not delete file with blob key" + key, t);
-				}
-			}
-		}
 	}
 	
 	public int getNumberOfReferenceHolders(JobID jobId) {

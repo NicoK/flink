@@ -428,7 +428,7 @@ class JobManager(
         taskManager ! decorateMessage(
           AlreadyRegistered(
             instanceID,
-            libraryCacheManager.getBlobServerPort))
+            libraryCacheManager.getBlobServerAddress.getPort))
       } else {
         try {
           val actorGateway = new AkkaActorGateway(taskManager, leaderSessionID.orNull)
@@ -443,7 +443,7 @@ class JobManager(
           taskManagerMap.put(taskManager, instanceID)
 
           taskManager ! decorateMessage(
-            AcknowledgeRegistration(instanceID, libraryCacheManager.getBlobServerPort))
+            AcknowledgeRegistration(instanceID, libraryCacheManager.getBlobServerAddress.getPort))
 
           // to be notified when the taskManager is no longer reachable
           context.watch(taskManager)
@@ -1066,7 +1066,7 @@ class JobManager(
         case Some((graph, jobInfo)) =>
           sender() ! decorateMessage(
             ClassloadingProps(
-              libraryCacheManager.getBlobServerPort,
+              libraryCacheManager.getBlobServerAddress.getPort,
               graph.getRequiredJarFiles,
               graph.getRequiredClasspaths))
         case None =>
@@ -1074,7 +1074,7 @@ class JobManager(
       }
 
     case RequestBlobManagerPort =>
-      sender ! decorateMessage(libraryCacheManager.getBlobServerPort)
+      sender ! decorateMessage(libraryCacheManager.getBlobServerAddress.getPort)
 
     case RequestArchive =>
       sender ! decorateMessage(ResponseArchive(archive))

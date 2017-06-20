@@ -90,6 +90,8 @@ public class BlobRecoveryITCase extends TestLogger {
 			byte[] expected = new byte[1024];
 			rand.nextBytes(expected);
 
+			JobID jobId = new JobID();
+
 			BlobKey[] keys = new BlobKey[2];
 
 			// Put data

@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.runtime.concurrent.Future;
@@ -26,8 +28,11 @@ import org.apache.flink.runtime.concurrent.impl.FlinkCompletableFuture;
 import org.apache.flink.util.OperatingSystem;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
+import javax.annotation.Nonnull;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -63,44 +68,50 @@ public class BlobServerPutTest extends TestLogger {
 
 	private final Random rnd = new Random();
 
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
 
 	// --- concurrency tests for utility methods which could fail during the put operation ---
 
 	/**
-	 * Checked thread that calls {@link BlobServer#getStorageLocation(BlobKey)}
+	 * Checked thread that calls {@link BlobServer#getStorageLocation(JobID, BlobKey)}.
 	 */
 	public static class ContentAddressableGetStorageLocation extends CheckedThread {
 		private final BlobServer server;
+		private final JobID jobId;
 		private final BlobKey key;
 
-		public ContentAddressableGetStorageLocation(BlobServer server, BlobKey key) {
+		ContentAddressableGetStorageLocation(BlobServer server, JobID jobId, BlobKey key) {
 			this.server = server;
+			this.jobId = jobId;
 			this.key = key;
 		}
 
 		@Override
 		public void go() throws Exception {
-			server.getStorageLocation(key);
+			server.getStorageLocation(jobId, key);
 		}
 	}
 
 	/**
-	 * Tests concurrent calls to {@link BlobServer#getStorageLocation(BlobKey)}.
+	 * Tests concurrent calls to {@link BlobServer#getStorageLocation(JobID, BlobKey)}.
 	 */
 	@Test
 	public void testServerContentAddressableGetStorageLocationConcurrent() throws Exception {
-		BlobServer server = new BlobServer(new Configuration(), new VoidDistributedBlobStore());
+		Configuration config = new Configuration();
+		config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+			temporaryFolder.getRoot().getAbsolutePath());
 
-		try {
-			BlobKey key = new BlobKey();
+		try (BlobServer server = new BlobServer(config, new VoidDistributedBlobStore())) {
+			final JobID jobId = new JobID();
+			final BlobKey key = new BlobKey();
 			CheckedThread[] threads = new CheckedThread[] {
-				new ContentAddressableGetStorageLocation(server, key),
-				new ContentAddressableGetStorageLocation(server, key),
-				new ContentAddressableGetStorageLocation(server, key)
+				new ContentAddressableGetStorageLocation(server, jobId, key),
+				new ContentAddressableGetStorageLocation(server, jobId, key),
+				new ContentAddressableGetStorageLocation(server, jobId, key)
 			};
 			checkedThreadSimpleTest(threads);
-		} finally {
-			server.close();
 		}
 	}
 
@@ -110,7 +121,7 @@ public class BlobServerPutTest extends TestLogger {
 	 * @param threads threads to use
 	 * @throws Exception exceptions that are thrown from the threads
 	 */
-	protected void checkedThreadSimpleTest(CheckedThread[] threads)
+	private static void checkedThreadSimpleTest(CheckedThread[] threads)
 		throws Exception {
 
 		// start all threads
@@ -133,25 +144,30 @@ public class BlobServerPutTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+				temporaryFolder.getRoot().getAbsolutePath());
+
 			server = new BlobServer(config, new VoidDistributedBlobStore());
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
+			InetSocketAddress serverAddress = server.getAddress();
 			client = new BlobClient(serverAddress, config);
 
 			byte[] data = new byte[2000000];
 			rnd.nextBytes(data);
 
+			JobID jobId = new JobID();
+
 			// put content addressable (like libraries)
-			BlobKey key1 = client.put(data);
+			BlobKey key1 = client.put(jobId, data);
 			assertNotNull(key1);
 
-			BlobKey key2 = client.put(data, 10, 44);
+			BlobKey key2 = client.put(jobId, data, 10, 44);
 			assertNotNull(key2);
 
 			// --- GET the data and check that it is equal ---
 
 			// one get request on the same client
-			InputStream is1 = client.get(key2);
+			InputStream is1 = client.get(jobId, key2);
 			byte[] result1 = new byte[44];
 			BlobUtils.readFully(is1, result1, 0, result1.length, null);
 			is1.close();
@@ -164,7 +180,7 @@ public class BlobServerPutTest extends TestLogger {
 			client.close();
 			client = new BlobClient(serverAddress, config);
 
-			InputStream is2 = client.get(key1);
+			InputStream is2 = client.get(jobId, key1);
 			byte[] result2 = new byte[data.length];
 			BlobUtils.readFully(is2, result2, 0, result2.length, null);
 			is2.close();
@@ -187,17 +203,22 @@ public class BlobServerPutTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+				temporaryFolder.getRoot().getAbsolutePath());
+
 			server = new BlobServer(config, new VoidDistributedBlobStore());
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
+			InetSocketAddress serverAddress = server.getAddress();
 			client = new BlobClient(serverAddress, config);
 
 			byte[] data = new byte[2000000];
 			rnd.nextBytes(data);
 
+			JobID jobId = new JobID();
+
 			// put content addressable (like libraries)
 			{
-				BlobKey key1 = client.put(new ByteArrayInputStream(data));
+				BlobKey key1 = client.put(jobId, new ByteArrayInputStream(data));
 				assertNotNull(key1);
 			}
 		} finally {
@@ -221,17 +242,22 @@ public class BlobServerPutTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+				temporaryFolder.getRoot().getAbsolutePath());
+
 			server = new BlobServer(config, new VoidDistributedBlobStore());
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
+			InetSocketAddress serverAddress = server.getAddress();
 			client = new BlobClient(serverAddress, config);
 
 			byte[] data = new byte[2000000];
 			rnd.nextBytes(data);
 
+			JobID jobId = new JobID();
+
 			// put content addressable (like libraries)
 			{
-				BlobKey key1 = client.put(new ChunkedInputStream(data, 19));
+				BlobKey key1 = client.put(jobId, new ChunkedInputStream(data, 19));
 				assertNotNull(key1);
 			}
 		} finally {
@@ -254,23 +280,28 @@ public class BlobServerPutTest extends TestLogger {
 		File tempFileDir = null;
 		try {
 			Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+				temporaryFolder.getRoot().getAbsolutePath());
+
 			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			// make sure the blob server cannot create any files in its storage dir
-			tempFileDir = server.createTemporaryFilename().getParentFile().getParentFile();
+			tempFileDir = server.getStorageDir();
 			assertTrue(tempFileDir.setExecutable(true, false));
 			assertTrue(tempFileDir.setReadable(true, false));
 			assertTrue(tempFileDir.setWritable(false, false));
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
+			InetSocketAddress serverAddress = server.getAddress();
 			client = new BlobClient(serverAddress, config);
 
 			byte[] data = new byte[2000000];
 			rnd.nextBytes(data);
 
+			JobID jobId = new JobID();
+
 			// put content addressable (like libraries)
 			try {
-				client.put(data);
+				client.put(jobId, data);
 				fail("This should fail.");
 			}
 			catch (IOException e) {
@@ -278,7 +309,7 @@ public class BlobServerPutTest extends TestLogger {
 			}
 
 			try {
-				client.put(data);
+				client.put(jobId, data);
 				fail("Client should be closed");
 			}
 			catch (IllegalStateException e) {
@@ -288,6 +319,7 @@ public class BlobServerPutTest extends TestLogger {
 		} finally {
 			// set writable again to make sure we can remove the directory
 			if (tempFileDir != null) {
+				//noinspection ResultOfMethodCallIgnored
 				tempFileDir.setWritable(true, false);
 			}
 			if (client != null) {
@@ -306,7 +338,10 @@ public class BlobServerPutTest extends TestLogger {
 	 */
 	@Test
 	public void testConcurrentPutOperations() throws IOException, ExecutionException, InterruptedException {
-		final Configuration configuration = new Configuration();
+		final Configuration config = new Configuration();
+		config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+			temporaryFolder.getRoot().getAbsolutePath());
+
 		DistributedBlobStore blobStore = mock(DistributedBlobStore.class);
 		int concurrentPutOperations = 2;
 		int dataSize = 1024;
@@ -314,19 +349,21 @@ public class BlobServerPutTest extends TestLogger {
 		final CountDownLatch countDownLatch = new CountDownLatch(concurrentPutOperations);
 		final byte[] data = new byte[dataSize];
 
-		ArrayList<Future<BlobKey>> allFutures = new ArrayList(concurrentPutOperations);
+		final JobID jobId = new JobID();
+
+		ArrayList<Future<BlobKey>> allFutures = new ArrayList<>(concurrentPutOperations);
 
 		ExecutorService executor = Executors.newFixedThreadPool(concurrentPutOperations);
 
 		try (
-			final BlobServer blobServer = new BlobServer(configuration, blobStore)) {
+			final BlobServer blobServer = new BlobServer(config, blobStore)) {
 
 			for (int i = 0; i < concurrentPutOperations; i++) {
 				Future<BlobKey> putFuture = FlinkCompletableFuture.supplyAsync(new Callable<BlobKey>() {
 					@Override
 					public BlobKey call() throws Exception {
-						try (BlobClient blobClient = blobServer.createClient()) {
-							return blobClient.put(new BlockingInputStream(countDownLatch, data));
+						try (BlobClient blobClient = new BlobClient(blobServer.getAddress(), config)) {
+							return blobClient.put(jobId, new BlockingInputStream(countDownLatch, data));
 						}
 					}
 				}, executor);
@@ -351,7 +388,7 @@ public class BlobServerPutTest extends TestLogger {
 			}
 
 			// check that we only uploaded the file once to the blob store
-			verify(blobStore, times(1)).upload(any(File.class), eq(blobKey));
+			verify(blobStore, times(1)).upload(any(File.class), eq(jobId), eq(blobKey));
 		} finally {
 			executor.shutdownNow();
 		}
@@ -363,7 +400,7 @@ public class BlobServerPutTest extends TestLogger {
 		private final byte[] data;
 		private int index = 0;
 
-		public BlockingInputStream(CountDownLatch countDownLatch, byte[] data) {
+		BlockingInputStream(CountDownLatch countDownLatch, byte[] data) {
 			this.countDownLatch = Preconditions.checkNotNull(countDownLatch);
 			this.data = Preconditions.checkNotNull(data);
 		}
@@ -413,43 +450,43 @@ public class BlobServerPutTest extends TestLogger {
 
 		@Override
 		public int read() {
-			if (x < data.length) {
-				byte[] curr = data[x];
-				if (y < curr.length) {
-					byte next = curr[y];
-					y++;
-					return next;
+			while (true) {
+				if (x < data.length) {
+					byte[] curr = data[x];
+					if (y < curr.length) {
+						byte next = curr[y];
+						y++;
+						return next;
+					} else {
+						y = 0;
+						x++;
+					}
+				} else {
+					return -1;
 				}
-				else {
-					y = 0;
-					x++;
-					return read();
-				}
-			} else {
-				return -1;
 			}
 		}
 
 		@Override
-		public int read(byte[] b, int off, int len) throws IOException {
-			if (len == 0) {
-				return 0;
-			}
-			if (x < data.length) {
-				byte[] curr = data[x];
-				if (y < curr.length) {
-					int toCopy = Math.min(len, curr.length - y);
-					System.arraycopy(curr, y, b, off, toCopy);
-					y += toCopy;
-					return toCopy;
-				} else {
-					y = 0;
-					x++;
-					return read(b, off, len);
+		public int read(@Nonnull byte[] b, int off, int len) throws IOException {
+			while (true) {
+				if (len == 0) {
+					return 0;
 				}
-			}
-			else {
-				return -1;
+				if (x < data.length) {
+					byte[] curr = data[x];
+					if (y < curr.length) {
+						int toCopy = Math.min(len, curr.length - y);
+						System.arraycopy(curr, y, b, off, toCopy);
+						y += toCopy;
+						return toCopy;
+					} else {
+						y = 0;
+						x++;
+					}
+				} else {
+					return -1;
+				}
 			}
 		}
 	}

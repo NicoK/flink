@@ -34,33 +34,33 @@ public class FallbackLibraryCacheManager implements LibraryCacheManager {
 	private static Logger LOG = LoggerFactory.getLogger(FallbackLibraryCacheManager.class);
 
 	@Override
-	public ClassLoader getClassLoader(JobID id) {
+	public ClassLoader getClassLoader(JobID jobId) {
 		return getClass().getClassLoader();
 	}
 
 	@Override
-	public File getFile(BlobKey blobKey) throws IOException {
+	public File getFile(JobID jobId, BlobKey blobKey) throws IOException {
 		throw new IOException("There is no file associated to the blob key " + blobKey);
 	}
 
 	@Override
-	public void registerJob(JobID id, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths) {
+	public void registerJob(JobID jobId, Collection<BlobKey> requiredJarFiles, Collection<URL> requiredClasspaths) {
 		LOG.warn("FallbackLibraryCacheManager cannot download files associated with blob keys.");
 	}
 	
 	@Override
-	public void registerTask(JobID id, ExecutionAttemptID execution, Collection<BlobKey> requiredJarFiles,
+	public void registerTask(JobID jobId, ExecutionAttemptID execution, Collection<BlobKey> requiredJarFiles,
 			Collection<URL> requiredClasspaths) {
 		LOG.warn("FallbackLibraryCacheManager cannot download files associated with blob keys.");
 	}
 
 	@Override
-	public void unregisterJob(JobID id) {
+	public void unregisterJob(JobID jobId) {
 		LOG.warn("FallbackLibraryCacheManager does not book keeping of job IDs.");
 	}
 	
 	@Override
-	public void unregisterTask(JobID id, ExecutionAttemptID execution) {
+	public void unregisterTask(JobID jobId, ExecutionAttemptID execution) {
 		LOG.warn("FallbackLibraryCacheManager does not book keeping of job IDs.");
 	}
 

@@ -18,8 +18,13 @@
 
 package org.apache.flink.runtime.blob;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.util.TestLogger;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 import java.io.EOFException;
 import java.io.File;
@@ -32,16 +37,13 @@ import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.fs.Path;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 /**
  * This class contains unit tests for the {@link BlobClient}.
  */
-public class BlobClientTest {
+public class BlobClientTest extends TestLogger {
 
 	/** The buffer size used during the tests in bytes. */
 	private static final int TEST_BUFFER_SIZE = 17 * 1000;
@@ -94,7 +96,7 @@ public class BlobClientTest {
 	 * @throws IOException
 	 *         thrown if an I/O error occurs while writing to the test file
 	 */
-	private static BlobKey prepareTestFile(File file) throws IOException {
+	static BlobKey prepareTestFile(File file) throws IOException {
 
 		MessageDigest md = BlobUtils.createMessageDigest();
 
@@ -132,7 +134,7 @@ public class BlobClientTest {
 	 * @throws IOException
 	 *         thrown if an I/O error occurs while reading the input stream
 	 */
-	private static void validateGet(final InputStream inputStream, final byte[] buf) throws IOException {
+	static void validateGet(final InputStream inputStream, final byte[] buf) throws IOException {
 
 		int bytesReceived = 0;
 
@@ -162,7 +164,7 @@ public class BlobClientTest {
 	 * @throws IOException
 	 *         thrown if an I/O error occurs while reading the input stream or the file
 	 */
-	private static void validateGet(final InputStream inputStream, final File file) throws IOException {
+	static void validateGet(final InputStream inputStream, final File file) throws IOException {
 
 		InputStream inputStream2 = null;
 		try {
@@ -198,30 +200,30 @@ public class BlobClientTest {
 		BlobClient client = null;
 
 		try {
+			JobID jobId = new JobID();
+
 			byte[] testBuffer = createTestBuffer();
 			MessageDigest md = BlobUtils.createMessageDigest();
 			md.update(testBuffer);
 			BlobKey origKey = new BlobKey(md.digest());
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", BLOB_SERVER.getPort());
+			InetSocketAddress serverAddress = BLOB_SERVER.getAddress();
 			client = new BlobClient(serverAddress, blobServiceConfig);
 
 			// Store the data
-			BlobKey receivedKey = client.put(testBuffer);
+			BlobKey receivedKey = client.put(jobId, testBuffer);
 			assertEquals(origKey, receivedKey);
 
 			// Retrieve the data
-			InputStream is = client.get(receivedKey);
+			InputStream is = client.get(jobId, receivedKey);
 			validateGet(is, testBuffer);
 
 			// Check reaction to invalid keys
 			try {
-				client.get(new BlobKey());
+				client.get(jobId, new BlobKey());
 				fail("Expected IOException did not occur");
 			}
-			catch (IOException fnfe) {
-				// expected
-			}
+			catch (IOException ignored) {}
 		}
 		catch (Exception e) {
 			e.printStackTrace();
@@ -231,7 +233,7 @@ public class BlobClientTest {
 			if (client != null) {
 				try {
 					client.close();
-				} catch (Throwable t) {}
+				} catch (Throwable ignored) {}
 			}
 		}
 	}
@@ -246,24 +248,26 @@ public class BlobClientTest {
 		InputStream is = null;
 
 		try {
+			JobID jobId = new JobID();
+
 			File testFile = File.createTempFile("testfile", ".dat");
 			testFile.deleteOnExit();
 
 			BlobKey origKey = prepareTestFile(testFile);
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", BLOB_SERVER.getPort());
+			InetSocketAddress serverAddress = BLOB_SERVER.getAddress();
 			client = new BlobClient(serverAddress, blobServiceConfig);
 
 			// Store the data
 			is = new FileInputStream(testFile);
-			BlobKey receivedKey = client.put(is);
+			BlobKey receivedKey = client.put(jobId, is);
 			assertEquals(origKey, receivedKey);
 
 			is.close();
 			is = null;
 
 			// Retrieve the data
-			is = client.get(receivedKey);
+			is = client.get(jobId, receivedKey);
 			validateGet(is, testFile);
 		}
 		catch (Exception e) {
@@ -274,34 +278,36 @@ public class BlobClientTest {
 			if (is != null) {
 				try {
 					is.close();
-				} catch (Throwable t) {}
+				} catch (Throwable ignored) {}
 			}
 			if (client != null) {
 				try {
 					client.close();
-				} catch (Throwable t) {}
+				} catch (Throwable ignored) {}
 			}
 		}
 	}
 
 	/**
-	 * Tests the static {@link BlobClient#uploadJarFiles(InetSocketAddress, Configuration, List)} helper.
+	 * Tests the static {@link BlobClient#uploadJarFiles(InetSocketAddress, Configuration, JobID, List)} helper.
 	 */
 	@Test
 	public void testUploadJarFilesHelper() throws Exception {
+		JobID jobId = new JobID();
+
 		final File testFile = File.createTempFile("testfile", ".dat");
 		testFile.deleteOnExit();
 		prepareTestFile(testFile);
 
-		InetSocketAddress serverAddress = new InetSocketAddress("localhost", BLOB_SERVER.getPort());
+		InetSocketAddress serverAddress = BLOB_SERVER.getAddress();
 
 		List<BlobKey> blobKeys = BlobClient.uploadJarFiles(serverAddress, blobServiceConfig,
-			Collections.singletonList(new Path(testFile.toURI())));
+			jobId, Collections.singletonList(new Path(testFile.toURI())));
 
 		assertEquals(1, blobKeys.size());
 
 		try (BlobClient blobClient = new BlobClient(serverAddress, blobServiceConfig)) {
-			InputStream is = blobClient.get(blobKeys.get(0));
+			InputStream is = blobClient.get(jobId, blobKeys.get(0));
 			validateGet(is, testFile);
 		}
 	}

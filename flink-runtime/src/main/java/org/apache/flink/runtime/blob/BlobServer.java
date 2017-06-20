@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
@@ -113,6 +114,7 @@ public class BlobServer extends Thread implements BlobService {
 		// configure the maximum number of concurrent connections
 		final int maxConnections = config.getInteger(BlobServerOptions.FETCH_CONCURRENT);
 		if (maxConnections >= 1) {
+
 			this.maxConnections = maxConnections;
 		}
 		else {
@@ -179,6 +181,11 @@ public class BlobServer extends Thread implements BlobService {
 	// --------------------------------------------------------------------------------------------
 	//  Path Accessors
 	// --------------------------------------------------------------------------------------------
+
+	@VisibleForTesting
+	File getStorageDir() {
+		return storageDir;
+	}
 
 	/**
 	 * Returns a file handle to the file associated with the given blob key on the blob

@@ -44,8 +44,7 @@ public class BlobServerRangeTest extends TestLogger {
 	}
 
 	/**
-	 * Try allocating on an unavailable port
-	 * @throws IOException
+	 * Try allocating on an unavailable port.
 	 */
 	@Test(expected = IOException.class)
 	public void testPortUnavailable() throws IOException {
@@ -63,6 +62,7 @@ public class BlobServerRangeTest extends TestLogger {
 
 		// this thing is going to throw an exception
 		try {
+			@SuppressWarnings("unused")
 			BlobServer srv = new BlobServer(conf, new VoidDistributedBlobStore());
 		} finally {
 			socket.close();
@@ -78,7 +78,6 @@ public class BlobServerRangeTest extends TestLogger {
 		int numAllocated = 2;
 		ServerSocket[] sockets = new ServerSocket[numAllocated];
 		for(int i = 0; i < numAllocated; i++) {
-			ServerSocket socket = null;
 			try {
 				sockets[i] = new ServerSocket(0);
 			} catch (IOException e) {
@@ -90,10 +89,10 @@ public class BlobServerRangeTest extends TestLogger {
 		Configuration conf = new Configuration();
 		conf.setString(BlobServerOptions.PORT, sockets[0].getLocalPort() + "," + sockets[1].getLocalPort() + "," + availablePort);
 
-		// this thing is going to throw an exception
+		// this thing may throw an exception
 		try {
 			BlobServer srv = new BlobServer(conf, new VoidDistributedBlobStore());
-			Assert.assertEquals(availablePort, srv.getPort());
+			Assert.assertEquals(availablePort, srv.getAddress().getPort());
 			srv.close();
 		} finally {
 			sockets[0].close();

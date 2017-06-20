@@ -20,6 +20,7 @@ package org.apache.flink.runtime.blob;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.concurrent.Future;
@@ -76,6 +77,9 @@ public class BlobServerGetTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+				temporaryFolder.getRoot().getAbsolutePath());
+
 			server = new BlobServer(config, new VoidDistributedBlobStore());
 
 			client = new BlobClient(server.getAddress(), config);
@@ -83,17 +87,19 @@ public class BlobServerGetTest extends TestLogger {
 			byte[] data = new byte[2000000];
 			rnd.nextBytes(data);
 
+			JobID jobId = new JobID();
+
 			// put content addressable (like libraries)
-			BlobKey key = client.put(data);
+			BlobKey key = client.put(jobId, data);
 			assertNotNull(key);
 
 			// delete all files to make sure that GET requests fail
-			File blobFile = server.getStorageLocation(key);
+			File blobFile = server.getStorageLocation(jobId, key);
 			assertTrue(blobFile.delete());
 
 			// issue a GET request that fails
 			try {
-				client.get(key);
+				client.get(jobId, key);
 				fail("This should not succeed.");
 			} catch (IOException e) {
 				// expected
@@ -115,20 +121,25 @@ public class BlobServerGetTest extends TestLogger {
 
 		try {
 			Configuration config = new Configuration();
+			config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+				temporaryFolder.getRoot().getAbsolutePath());
+
 			server = new BlobServer(config, new VoidDistributedBlobStore());
 
-			InetSocketAddress serverAddress = new InetSocketAddress("localhost", server.getPort());
+			InetSocketAddress serverAddress = server.getAddress();
 			client = new BlobClient(serverAddress, config);
 
 			byte[] data = new byte[5000000];
 			rnd.nextBytes(data);
 
+			JobID jobId = new JobID();
+
 			// put content addressable (like libraries)
-			BlobKey key = client.put(data);
+			BlobKey key = client.put(jobId, data);
 			assertNotNull(key);
 
 			// issue a GET request that succeeds
-			InputStream is = client.get(key);
+			InputStream is = client.get(jobId, key);
 
 			byte[] receiveBuffer = new byte[50000];
 			BlobUtils.readFully(is, receiveBuffer, 0, receiveBuffer.length, null);
@@ -165,9 +176,9 @@ public class BlobServerGetTest extends TestLogger {
 	 */
 	@Test
 	public void testConcurrentGetOperations() throws IOException, ExecutionException, InterruptedException {
-		final Configuration configuration = new Configuration();
-
-		configuration.setString(BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+		final Configuration config = new Configuration();
+		config.setString(BlobServerOptions.STORAGE_DIRECTORY,
+			temporaryFolder.getRoot().getAbsolutePath());
 
 		final DistributedBlobStore blobStore = mock(DistributedBlobStore.class);
 
@@ -176,6 +187,8 @@ public class BlobServerGetTest extends TestLogger {
 
 		final byte[] data = {1, 2, 3, 4, 99, 42};
 		final ByteArrayInputStream bais = new ByteArrayInputStream(data);
+
+		final JobID jobId = new JobID();
 
 		MessageDigest md = BlobUtils.createMessageDigest();
 
@@ -193,17 +206,17 @@ public class BlobServerGetTest extends TestLogger {
 					return null;
 				}
 			}
-		).when(blobStore).download(any(BlobKey.class), any(File.class));
+		).when(blobStore).download(any(JobID.class), any(BlobKey.class), any(File.class));
 
 		final ExecutorService executor = Executors.newFixedThreadPool(numberConcurrentGetOperations);
 
-		try (final BlobServer blobServer = new BlobServer(configuration, blobStore)) {
+		try (final BlobServer blobServer = new BlobServer(config, blobStore)) {
 			for (int i = 0; i < numberConcurrentGetOperations; i++) {
 				Future<InputStream> getOperation = FlinkCompletableFuture.supplyAsync(new Callable<InputStream>() {
 					@Override
 					public InputStream call() throws Exception {
-						try (BlobClient blobClient = blobServer.createClient();
-							 InputStream inputStream = blobClient.get(blobKey)) {
+						try (BlobClient blobClient = new BlobClient(blobServer.getAddress(), config);
+							 InputStream inputStream = blobClient.get(jobId, blobKey)) {
 							byte[] buffer = new byte[data.length];
 
 							IOUtils.readFully(inputStream, buffer);
@@ -235,7 +248,7 @@ public class BlobServerGetTest extends TestLogger {
 			}
 
 			// verify that we downloaded the requested blob exactly once from the DistributedBlobStore
-			verify(blobStore, times(1)).download(eq(blobKey), any(File.class));
+			verify(blobStore, times(1)).download(eq(jobId), eq(blobKey), any(File.class));
 		} finally {
 			executor.shutdownNow();
 		}

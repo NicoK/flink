@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
@@ -159,7 +160,7 @@ public final class BlobCache implements BlobService {
 		while (true) {
 			try (
 				final BlobClient bc = new BlobClient(serverAddress, blobClientConfig);
-				final InputStream is = bc.get(key);
+				final InputStream is = bc.get(jobId, key);
 				final OutputStream os = new FileOutputStream(localJarFile)
 			) {
 				while (true) {
@@ -202,7 +203,11 @@ public final class BlobCache implements BlobService {
 
 	/**
 	 * Deletes the file associated with the given key from the BLOB cache.
-	 * @param key referring to the file to be deleted
+	 *
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param key
+	 * 		referring to the file to be deleted
 	 */
 	@Override
 	public boolean delete(JobID jobId, BlobKey key) {
@@ -219,13 +224,17 @@ public final class BlobCache implements BlobService {
 	/**
 	 * Deletes the file associated with the given key from the BLOB cache and
 	 * BLOB server.
-	 *
+	 * <p>
 	 * TODO: remove this function?
 	 *
-	 * @param key referring to the file to be deleted
+	 * @param jobId
+	 * 		ID of the job this blob belongs to
+	 * @param key
+	 * 		referring to the file to be deleted
+	 *
 	 * @throws IOException
-	 *         thrown if an I/O error occurs while transferring the request to
-	 *         the BLOB server or if the BLOB server cannot delete the file
+	 * 		thrown if an I/O error occurs while transferring the request to the BLOB server or if the
+	 * 		BLOB server cannot delete the file
 	 */
 	public void deleteGlobal(JobID jobId, BlobKey key) throws IOException {
 		// delete locally
@@ -234,7 +243,7 @@ public final class BlobCache implements BlobService {
 		// (can't use the distributed storage directly - this way the blob
 		// server is aware of the delete operation, too)
 		try (BlobClient bc = createClient()) {
-			bc.delete(key);
+			bc.delete(jobId, key);
 		}
 	}
 
@@ -271,7 +280,8 @@ public final class BlobCache implements BlobService {
 	}
 
 	// TODO: remove?
-	public File getStorageDir() {
+	@VisibleForTesting
+	File getStorageDir() {
 		return this.storageDir;
 	}
 
