@@ -969,7 +969,7 @@ class TaskManager(
           highAvailabilityServices.createBlobStore())
         blobService = Option(blobcache)
         libraryCacheManager = Some(
-          new BlobLibraryCacheManager(blobcache, config.getCleanupInterval()))
+          new BlobLibraryCacheManager(blobcache))
       }
       catch {
         case e: Exception =>
