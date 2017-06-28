@@ -23,7 +23,7 @@ import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.BlobServerLibraryManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.RunningJobsRegistry;
@@ -169,7 +169,7 @@ public class JobManagerRunner implements LeaderContender, OnCompletionActions, F
 			this.jobManagerMetricGroup = jobManagerMetrics;
 
 			// libraries and class loader first
-			final BlobLibraryCacheManager libraryCacheManager = jobManagerServices.libraryCacheManager;
+			final BlobServerLibraryManager libraryCacheManager = jobManagerServices.libraryCacheManager;
 			final ClassLoader userCodeLoader;
 			try {
 				userCodeLoader = libraryCacheManager.registerJob(
