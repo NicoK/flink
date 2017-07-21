@@ -311,6 +311,7 @@ public class ExecutionGraphTestUtils {
 				restartStrategy,
 				new UnregisteredMetricsGroup(),
 				1,
+				null,
 				TEST_LOGGER);
 	}
 

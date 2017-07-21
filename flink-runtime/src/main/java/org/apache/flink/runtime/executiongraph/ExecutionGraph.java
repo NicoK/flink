@@ -32,6 +32,7 @@ import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
@@ -76,6 +77,7 @@ import org.apache.flink.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -123,20 +125,20 @@ import static org.apache.flink.util.Preconditions.checkState;
  *         about deployment of tasks and updates in the task status always use the ExecutionAttemptID to
  *         address the message receiver.</li>
  * </ul>
- * 
+ *
  * <h2>Global and local failover</h2>
- * 
+ *
  * The Execution Graph has two failover modes: <i>global failover</i> and <i>local failover</i>.
- * 
+ *
  * <p>A <b>global failover</b> aborts the task executions for all vertices and restarts whole
  * data flow graph from the last completed checkpoint. Global failover is considered the
  * "fallback strategy" that is used when a local failover is unsuccessful, or when a issue is
  * found in the state of the ExecutionGraph that could mark it as inconsistent (caused by a bug).
- * 
+ *
  * <p>A <b>local failover</b> is triggered when an individual vertex execution (a task) fails.
  * The local failover is coordinated by the {@link FailoverStrategy}. A local failover typically
  * attempts to restart as little as possible, but as much as necessary.
- * 
+ *
  * <p>Between local- and global failover, the global failover always takes precedence, because it
  * is the core mechanism that the ExecutionGraph relies on to bring back consistency. The
  * guard that, the ExecutionGraph maintains a <i>global modification version</i>, which is incremented
@@ -144,7 +146,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * failure). Local failover is always scoped by the modification version that the execution graph
  * had when the failover was triggered. If a new global modification version is reached during
  * local failover (meaning there is a concurrent global failover), the failover strategy has to
- * yield before the global failover.  
+ * yield before the global failover.
  */
 public class ExecutionGraph implements AccessExecutionGraph, Archiveable<ArchivedExecutionGraph> {
 
@@ -161,6 +163,14 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** The log object used for debugging. */
 	static final Logger LOG = LoggerFactory.getLogger(ExecutionGraph.class);
 
+	/**
+	 * If the serialized job information inside {@link #serializedJobInformation} is larger than
+	 * this, we try to offload it to the blob server.
+	 *
+	 * @see #tryOffLoadJobInformation()
+	 */
+	private static final int MAX_SHORT_MESSAGE_SIZE = 1 * 1024; // TODO: make configurable
+
 	// --------------------------------------------------------------------------------------------
 
 	/** The lock used to secure all access to mutable fields, especially the tracking of progress
@@ -174,6 +184,13 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * serializations of the same data when creating a TaskDeploymentDescriptor.
 	 */
 	private final SerializedValue<JobInformation> serializedJobInformation;
+
+	/**
+	 * The key of the offloaded job information BLOB containing {@link #serializedJobInformation} or
+	 * <tt>null</tt> if not offloaded.
+	 */
+	@Nullable
+	private final BlobKey jobInformationBlobKey;
 
 	/** The executor which is used to execute futures. */
 	private final ScheduledExecutorService futureExecutor;
@@ -233,6 +250,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** The total number of vertices currently in the execution graph */
 	private int numVerticesTotal;
+
+	/** Blob server reference for offloading large RPC messages. */
+	private final BlobServer blobServer;
 
 	// ------ Configuration of the Execution -------
 
@@ -306,7 +326,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			Collections.<BlobKey>emptyList(),
 			Collections.<URL>emptyList(),
 			slotProvider,
-			ExecutionGraph.class.getClassLoader());
+			ExecutionGraph.class.getClassLoader(),
+			null
+		);
 	}
 
 	public ExecutionGraph(
@@ -322,7 +344,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			List<BlobKey> requiredJarFiles,
 			List<URL> requiredClasspaths,
 			SlotProvider slotProvider,
-			ClassLoader userClassLoader) {
+			ClassLoader userClassLoader,
+			BlobServer blobServer) {
 
 		checkNotNull(futureExecutor);
 		checkNotNull(jobId);
@@ -378,6 +401,48 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		// is ready by the time the failover strategy sees it
 		this.failoverStrategy = checkNotNull(failoverStrategyFactory.create(this), "null failover strategy");
 		LOG.info("Job recovers via failover strategy: {}", failoverStrategy.getStrategyName());
+
+		this.blobServer = blobServer;
+		this.jobInformationBlobKey = tryOffLoadJobInformation();
+	}
+
+	/**
+	 * Tries to store {@link #serializedJobInformation} and in the graph's {@link
+	 * ExecutionGraph#blobServer} (if not <tt>null</tt>) so that RPC messages do not need to include
+	 * it.
+	 *
+	 * @return the BLOB key of the uploaded job information or <tt>null</tt> if the upload failed
+	 */
+	@Nullable
+	private BlobKey tryOffLoadJobInformation() {
+		// more than MAX_SHORT_MESSAGE_SIZE?
+		if (serializedJobInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
+
+			if (blobServer == null) {
+				LOG.warn("No BLOB store available: unable to offload data!");
+				return null;
+			}
+
+			// TODO: do not overwrite existing job info and thus speed up recovery
+			try {
+				return blobServer.putHA(jobInformation.getJobId(), serializedJobInformation.getByteArray());
+			} catch (IOException e) {
+				LOG.warn("Failed to offload job " + getJobID() + " information data to BLOB store", e);
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Returns the key of the offloaded job information BLOB containing {@link
+	 * #serializedJobInformation}.
+	 *
+	 * @return the BLOB key or <tt>null</tt> if not offloaded
+	 */
+	@Nullable
+	public BlobKey getJobInformationBlobKey() {
+		return jobInformationBlobKey;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -601,7 +666,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * Gets the number of full restarts that the execution graph went through.
 	 * If a full restart recovery is currently pending, this recovery is included in the
 	 * count.
-	 * 
+	 *
 	 * @return The number of full restarts so far
 	 */
 	public long getNumberOfFullRestarts() {
@@ -675,6 +740,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	@Override
 	public long getStatusTimestamp(JobStatus status) {
 		return this.stateTimestamps[status.ordinal()];
+	}
+
+	public final BlobServer getBlobServer() {
+		return blobServer;
 	}
 
 	/**
@@ -827,8 +896,8 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	}
 
 	/**
-	 * 
-	 * 
+	 *
+	 *
 	 * @param slotProvider  The resource provider from which the slots are allocated
 	 * @param timeout       The maximum time that the deployment may take, before a
 	 *                      TimeoutException is thrown.
@@ -933,7 +1002,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 					// Wouldn't it be nice if we could return an actual Void object?
 					// return (Void) Unsafe.getUnsafe().allocateInstance(Void.class);
-					return null; 
+					return null;
 				}
 			}, futureExecutor);
 
@@ -1082,12 +1151,12 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/**
 	 * Fails the execution graph globally. This failure will not be recovered by a specific
 	 * failover strategy, but results in a full restart of all tasks.
-	 * 
+	 *
 	 * <p>This global failure is meant to be triggered in cases where the consistency of the
 	 * execution graph' state cannot be guaranteed any more (for example when catching unexpected
 	 * exceptions that indicate a bug or an unexpected call race), and where a full restart is the
 	 * safe way to get consistency back.
-	 * 
+	 *
 	 * @param errorInfo ErrorInfo containing the exception that caused the failure.
 	 */
 	public void failGlobal(ErrorInfo errorInfo) {
@@ -1418,7 +1487,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					return true;
 				}
 				else if (!isRestartable && transitionState(currentState, JobStatus.FAILED, failureCause)) {
-					final String cause1 = isFailureCauseAllowingRestart ? null :  
+					final String cause1 = isFailureCauseAllowingRestart ? null :
 							"a type of SuppressRestartsException was thrown";
 					final String cause2 = isRestartStrategyAllowingRestart ? null :
 						"the restart strategy prevented it";
@@ -1476,25 +1545,25 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				switch (state.getExecutionState()) {
 					case RUNNING:
 						return attempt.switchToRunning();
-	
+
 					case FINISHED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFinished(accumulators, state.getIOMetrics());
 						return true;
-	
+
 					case CANCELED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.cancelingComplete(accumulators, state.getIOMetrics());
 						return true;
-	
+
 					case FAILED:
 						// this deserialization is exception-free
 						accumulators = deserializeAccumulators(state);
 						attempt.markFailed(state.getError(userClassLoader), accumulators, state.getIOMetrics());
 						return true;
-	
+
 					default:
 						// we mark as failed and return false, which triggers the TaskManager
 						// to remove the task
@@ -1517,9 +1586,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/**
 	 * Deserializes accumulators from a task state update.
-	 * 
+	 *
 	 * <p>This method never throws an exception!
-	 * 
+	 *
 	 * @param state The task execution state from which to deserialize the accumulators.
 	 * @return The deserialized accumulators, of null, if there are no accumulators or an error occurred.
 	 */

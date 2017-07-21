@@ -23,6 +23,7 @@ import org.apache.flink.api.common.Archiveable;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
@@ -771,8 +772,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 
 		SerializedValue<JobInformation> serializedJobInformation = getExecutionGraph().getSerializedJobInformation();
-		SerializedValue<TaskInformation> serializedJobVertexInformation = null;
+		BlobKey serializedJobInformationKey = getExecutionGraph().getJobInformationBlobKey();
 
+		SerializedValue<TaskInformation> serializedJobVertexInformation;
+		BlobKey serializedJobVertexInformationKey = jobVertex.getTaskInformationBlobKey();
 		try {
 			serializedJobVertexInformation = jobVertex.getSerializedTaskInformation();
 		} catch (IOException e) {
@@ -781,8 +784,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 
 		return new TaskDeploymentDescriptor(
+			getJobId(),
 			serializedJobInformation,
+			serializedJobInformationKey,
 			serializedJobVertexInformation,
+			serializedJobVertexInformationKey,
 			executionId,
 			targetSlot.getAllocatedSlot().getSlotAllocationId(),
 			subTaskIndex,

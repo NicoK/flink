@@ -97,7 +97,6 @@ import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.SerializedThrowable;
 import org.apache.flink.util.InstantiationUtil;
-
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
@@ -286,6 +285,7 @@ public class JobMaster extends RpcEndpoint<JobMasterGateway> {
 			restartStrategy,
 			jobMetricGroup,
 			-1,
+			blobServer,
 			log);
 
 		// register self as job status change listener

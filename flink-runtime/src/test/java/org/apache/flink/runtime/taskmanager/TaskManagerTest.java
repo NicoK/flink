@@ -2150,8 +2150,11 @@ public class TaskManagerTest extends TestLogger {
 		SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(taskInformation);
 
 		return new TaskDeploymentDescriptor(
+			jobId,
 			serializedJobInformation,
+			null,
 			serializedJobVertexInformation,
+			null,
 			executionAttemptId,
 			new AllocationID(),
 			subtaskIndex,

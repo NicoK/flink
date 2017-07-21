@@ -295,18 +295,7 @@ public class TaskExecutor extends RpcEndpoint<TaskExecutorGateway> {
 	@RpcMethod
 	public Acknowledge submitTask(TaskDeploymentDescriptor tdd, UUID jobManagerLeaderId) throws TaskSubmissionException {
 
-		// first, deserialize the pre-serialized information
-		final JobInformation jobInformation;
-		final TaskInformation taskInformation;
-		try {
-			jobInformation = tdd.getSerializedJobInformation().deserializeValue(getClass().getClassLoader());
-			taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
-		}
-		catch (IOException | ClassNotFoundException e) {
-			throw new TaskSubmissionException("Could not deserialize the job or task information.", e);
-		}
-
-		final JobID jobId = jobInformation.getJobId();
+		final JobID jobId = tdd.getJobId();
 		final JobManagerConnection jobManagerConnection = jobManagerTable.get(jobId);
 
 		if (jobManagerConnection == null) {
@@ -333,6 +322,30 @@ public class TaskExecutor extends RpcEndpoint<TaskExecutorGateway> {
 			throw new TaskSubmissionException(message);
 		}
 
+		// re-integrate offloaded data:
+		BlobCache blobCache = jobManagerConnection.getBlobCache();
+		try {
+			tdd.loadBigData(blobCache.getPermanentBlobStore());
+		} catch (IOException | ClassNotFoundException e) {
+			throw new TaskSubmissionException("Could not re-integrate offloaded TaskDeploymentDescriptor data.", e);
+		}
+
+		// deserialize the pre-serialized information
+		final JobInformation jobInformation;
+		final TaskInformation taskInformation;
+		try {
+			jobInformation = tdd.getSerializedJobInformation().deserializeValue(getClass().getClassLoader());
+			taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
+		}
+		catch (IOException | ClassNotFoundException e) {
+			throw new TaskSubmissionException("Could not deserialize the job or task information.", e);
+		}
+		if (!jobId.equals(jobInformation.getJobId())) {
+			throw new TaskSubmissionException(
+				"Inconsistent job ID information inside TaskDeploymentDescriptor (" +
+					tdd.getJobId() + " vs. " + jobInformation.getJobId() + ")");
+		}
+
 		TaskMetricGroup taskMetricGroup = taskManagerMetricGroup.addTaskForJob(
 				jobInformation.getJobId(),
 				jobInformation.getJobName(),
@@ -352,7 +365,6 @@ public class TaskExecutor extends RpcEndpoint<TaskExecutorGateway> {
 
 		TaskManagerActions taskManagerActions = jobManagerConnection.getTaskManagerActions();
 		CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
-		BlobCache blobCache = jobManagerConnection.getBlobCache();
 		LibraryCacheManager libraryCache = jobManagerConnection.getLibraryCacheManager();
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier = jobManagerConnection.getResultPartitionConsumableNotifier();
 		PartitionProducerStateChecker partitionStateChecker = jobManagerConnection.getPartitionStateChecker();

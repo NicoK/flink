@@ -657,8 +657,11 @@ public class TaskExecutorTest extends TestLogger {
 		SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(taskInformation);
 
 		final TaskDeploymentDescriptor tdd = new TaskDeploymentDescriptor(
+				jobId,
 				serializedJobInformation,
+				null,
 				serializedJobVertexInformation,
+				null,
 				new ExecutionAttemptID(),
 				allocationId,
 				0,
@@ -1232,8 +1235,11 @@ public class TaskExecutorTest extends TestLogger {
 			SerializedValue<TaskInformation> serializedJobVertexInformation = new SerializedValue<>(taskInformation);
 
 			final TaskDeploymentDescriptor tdd = new TaskDeploymentDescriptor(
+				jobId,
 				serializedJobInformation,
+				null,
 				serializedJobVertexInformation,
+				null,
 				new ExecutionAttemptID(),
 				allocationId1,
 				0,

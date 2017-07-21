@@ -76,8 +76,11 @@ public class TaskDeploymentDescriptorTest {
 			final TaskStateHandles taskStateHandles = new TaskStateHandles();
 
 			final TaskDeploymentDescriptor orig = new TaskDeploymentDescriptor(
+				jobID,
 				serializedJobInformation,
+				null,
 				serializedJobVertexInformation,
+				null,
 				execId,
 				allocationId,
 				indexInSubtaskGroup,

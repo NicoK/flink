@@ -108,7 +108,8 @@ public class RestartPipelinedRegionStrategyTest {
             Collections.<BlobKey>emptyList(),
             Collections.<URL>emptyList(),
             scheduler,
-            ExecutionGraph.class.getClassLoader());
+            ExecutionGraph.class.getClassLoader(),
+			null);
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -193,7 +194,8 @@ public class RestartPipelinedRegionStrategyTest {
             Collections.<BlobKey>emptyList(),
             Collections.<URL>emptyList(),
             scheduler,
-            ExecutionGraph.class.getClassLoader());
+            ExecutionGraph.class.getClassLoader(),
+			null);
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -283,7 +285,8 @@ public class RestartPipelinedRegionStrategyTest {
             Collections.<BlobKey>emptyList(),
             Collections.<URL>emptyList(),
             scheduler,
-            ExecutionGraph.class.getClassLoader());
+            ExecutionGraph.class.getClassLoader(),
+			null);
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -364,7 +367,8 @@ public class RestartPipelinedRegionStrategyTest {
             Collections.<BlobKey>emptyList(),
             Collections.<URL>emptyList(),
             scheduler,
-            ExecutionGraph.class.getClassLoader());
+            ExecutionGraph.class.getClassLoader(),
+			null);
 		try {
 			eg.attachJobGraph(ordered);
 		}

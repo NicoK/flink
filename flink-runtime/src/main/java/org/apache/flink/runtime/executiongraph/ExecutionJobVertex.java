@@ -26,11 +26,14 @@ import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.core.io.InputSplitSource;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
+import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.concurrent.Future;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -41,15 +44,15 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobEdge;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
-
 import org.slf4j.Logger;
+
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -59,9 +62,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * An {@code ExecutionJobVertex} is part of the {@link ExecutionGraph}, and the peer 
+ * An {@code ExecutionJobVertex} is part of the {@link ExecutionGraph}, and the peer
  * to the {@link JobVertex}.
- * 
+ *
  * <p>The {@code ExecutionJobVertex} corresponds to a parallelized operation. It
  * contains an {@link ExecutionVertex} for each parallel instance of that operation.
  */
@@ -69,6 +72,14 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	/** Use the same log for all ExecutionGraph classes */
 	private static final Logger LOG = ExecutionGraph.LOG;
+
+	/**
+	 * If the serialized task information inside {@link #serializedTaskInformation} is larger than
+	 * this, we try to offload it to the blob server.
+	 *
+	 * @see #tryOffLoadTaskInformation()
+	 */
+	private static final int MAX_SHORT_MESSAGE_SIZE = 1 * 1024; // TODO: make configurable
 
 	public static final int VALUE_NOT_SET = -1;
 
@@ -95,7 +106,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	 * The ID's are in the same order as {@link ExecutionJobVertex#operatorIDs}.
 	 */
 	private final List<OperatorID> userDefinedOperatorIds;
-	
+
 	private final ExecutionVertex[] taskVertices;
 
 	private final IntermediateResult[] producedDataSets;
@@ -120,6 +131,13 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	 * TaskDeploymentDescriptors.
 	 */
 	private SerializedValue<TaskInformation> serializedTaskInformation;
+
+	/**
+	 * The key of the offloaded task information BLOB containing {@link #serializedTaskInformation}
+	 * or <tt>null</tt> if not offloaded.
+	 */
+	@Nullable
+	private BlobKey taskInformationBlobKey = null;
 
 	private InputSplitAssigner splitAssigner;
 
@@ -169,7 +187,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		this.taskVertices = new ExecutionVertex[numTaskVertices];
 		this.operatorIDs = Collections.unmodifiableList(jobVertex.getOperatorIDs());
 		this.userDefinedOperatorIds = Collections.unmodifiableList(jobVertex.getUserDefinedOperatorIDs());
-		
+
 		this.inputs = new ArrayList<>(jobVertex.getInputs().size());
 		
 		// take the sharing group
@@ -352,6 +370,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	public SerializedValue<TaskInformation> getSerializedTaskInformation() throws IOException {
 
 		if (null == serializedTaskInformation) {
+			// TODO: actually, at the moment, multiple threads may enter this code
+			// -> we may be able to avoid some unnecessary work here
 
 			int parallelism = getParallelism();
 			int maxParallelism = getMaxParallelism();
@@ -368,9 +388,53 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 							maxParallelism,
 							jobVertex.getInvokableClassName(),
 							jobVertex.getConfiguration()));
+
+			taskInformationBlobKey = tryOffLoadTaskInformation();
 		}
 
 		return serializedTaskInformation;
+	}
+
+	/**
+	 * Returns the key of the offloaded task information BLOB containing {@link
+	 * #serializedTaskInformation}.
+	 * <p>
+	 * This may be true after the first call to {@link #getSerializedTaskInformation()}.
+	 *
+	 * @return the BLOB key or <tt>null</tt> if not offloaded
+	 */
+	@Nullable
+	public BlobKey getTaskInformationBlobKey() {
+		return taskInformationBlobKey;
+	}
+
+	/**
+	 * Tries to store {@link #serializedTaskInformation} and in the graph's {@link
+	 * ExecutionGraph#blobServer} (if not <tt>null</tt>) so that RPC messages do not need to include
+	 * it.
+	 *
+	 * @return the BLOB key of the uploaded task information or <tt>null</tt> if the upload failed
+	 */
+	@Nullable
+	private BlobKey tryOffLoadTaskInformation() {
+		// more than MAX_SHORT_MESSAGE_SIZE?
+		if (serializedTaskInformation.getByteArray().length > MAX_SHORT_MESSAGE_SIZE) {
+
+			BlobServer blobServer = graph.getBlobServer();
+			if (blobServer == null) {
+				LOG.warn("No BLOB store available: unable to offload data!");
+				return null;
+			}
+
+			// TODO: do not overwrite existing task info and thus speed up recovery?
+			try {
+				return blobServer.putHA(getJobId(), serializedTaskInformation.getByteArray());
+			} catch (IOException e) {
+				LOG.warn("Failed to offload task " + getJobVertexId() + " information data to BLOB store", e);
+			}
+		}
+
+		return null;
 	}
 
 	@Override
@@ -504,7 +568,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	/**
 	 * Cancels all currently running vertex executions.
-	 * 
+	 *
 	 * @return A future that is complete once all tasks have canceled.
 	 */
 	public Future<Void> cancelWithFuture() {
@@ -591,21 +655,21 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	/**
 	 * A utility function that computes an "aggregated" state for the vertex.
-	 * 
+	 *
 	 * <p>This state is not used anywhere in the  coordination, but can be used for display
 	 * in dashboards to as a summary for how the particular parallel operation represented by
 	 * this ExecutionJobVertex is currently behaving.
-	 * 
+	 *
 	 * <p>For example, if at least one parallel task is failed, the aggregate state is failed.
 	 * If not, and at least one parallel task is cancelling (or cancelled), the aggregate state
 	 * is cancelling (or cancelled). If all tasks are finished, the aggregate state is finished,
 	 * and so on.
-	 * 
+	 *
 	 * @param verticesPerState The number of vertices in each state (indexed by the ordinal of
 	 *                         the ExecutionState values).
 	 * @param parallelism The parallelism of the ExecutionJobVertex
-	 * 
-	 * @return The aggregate state of this ExecutionJobVertex. 
+	 *
+	 * @return The aggregate state of this ExecutionJobVertex.
 	 */
 	public static ExecutionState getAggregateJobVertexState(int[] verticesPerState, int parallelism) {
 		if (verticesPerState == null || verticesPerState.length != ExecutionState.values().length) {

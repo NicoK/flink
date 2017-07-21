@@ -565,6 +565,7 @@ public class ExecutionGraphSchedulingTest extends TestLogger {
 			new NoRestartStrategy(),
 			new UnregisteredMetricsGroup(),
 			1,
+			null,
 			log);
 	}
 

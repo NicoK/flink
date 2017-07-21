@@ -106,7 +106,7 @@ public class ExecutionGraphDeploymentTest {
 				TestingUtils.defaultExecutor(),
 				TestingUtils.defaultExecutor(),
 				jobId, 
-				"some job", 
+				"some job",
 				new Configuration(),
 				new SerializedValue<>(new ExecutionConfig()),
 				AkkaUtils.getDefaultTimeout(),
@@ -456,7 +456,6 @@ public class ExecutionGraphDeploymentTest {
 				AkkaUtils.getDefaultTimeout(),
 				new NoRestartStrategy(),
 				scheduler);
-
 		eg.setQueuedSchedulingAllowed(false);
 
 		List<JobVertex> ordered = Arrays.asList(v1, v2);
@@ -534,6 +533,7 @@ public class ExecutionGraphDeploymentTest {
 			new NoRestartStrategy(),
 			new UnregisteredMetricsGroup(),
 			1,
+			null,
 			LoggerFactory.getLogger(getClass()));
 	}
 }
