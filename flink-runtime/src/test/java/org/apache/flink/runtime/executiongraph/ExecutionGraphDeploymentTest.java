@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import static junit.framework.TestCase.assertNull;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.getInstance;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -34,6 +35,7 @@ import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.time.Time;
@@ -43,6 +45,8 @@ import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.blob.PermanentBlobService;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
@@ -52,11 +56,10 @@ import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.SimpleSlot;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.jobgraph.JobStatus;
-import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.jobgraph.JobStatus;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
@@ -67,11 +70,43 @@ import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.testutils.DirectScheduledExecutorService;
 import org.apache.flink.util.SerializedValue;
-
 import org.junit.Test;
 import org.slf4j.LoggerFactory;
 
+
 public class ExecutionGraphDeploymentTest {
+
+	/**
+	 * BLOB server instance to use for the job graph (may be <tt>null</tt>).
+	 */
+	protected BlobServer blobServer = null;
+
+	/**
+	 * Permanent BLOB cache instance to use for the actor gateway that handles the {@link
+	 * TaskDeploymentDescriptor} loading (may be <tt>null</tt>).
+	 */
+	protected PermanentBlobService blobCache = null;
+
+	/**
+	 * Checks that the job information for the given ID has been offloaded successfully (if
+	 * offloading is used).
+	 *
+	 * @param eg           the execution graph that was created
+	 */
+	protected void checkJobOffloaded(ExecutionGraph eg) throws Exception {
+		assertNull(eg.getJobInformationBlobKey());
+	}
+
+	/**
+	 * Checks that the task information for the job vertex has been offloaded successfully (if
+	 * offloading is used).
+	 *
+	 * @param eg           the execution graph that was created
+	 * @param jobVertexId  job vertex ID
+	 */
+	protected void checkTaskOffloaded(ExecutionGraph eg, JobVertexID jobVertexId) throws Exception {
+		assertNull(eg.getJobVertex(jobVertexId).getTaskInformationBlobKey());
+	}
 
 	@Test
 	public void testBuildDeploymentDescriptor() {
@@ -111,7 +146,9 @@ public class ExecutionGraphDeploymentTest {
 				new SerializedValue<>(new ExecutionConfig()),
 				AkkaUtils.getDefaultTimeout(),
 				new NoRestartStrategy(),
-				new Scheduler(TestingUtils.defaultExecutionContext()));
+				new Scheduler(TestingUtils.defaultExecutionContext()),
+				blobServer);
+			checkJobOffloaded(eg);
 
 			List<JobVertex> ordered = Arrays.asList(v1, v2, v3, v4);
 
@@ -120,7 +157,10 @@ public class ExecutionGraphDeploymentTest {
 			ExecutionJobVertex ejv = eg.getAllVertices().get(jid2);
 			ExecutionVertex vertex = ejv.getTaskVertices()[3];
 
-			ExecutionGraphTestUtils.SimpleActorGateway instanceGateway = new ExecutionGraphTestUtils.SimpleActorGateway(TestingUtils.directExecutionContext());
+			ExecutionGraphTestUtils.SimpleActorGatewayWithTDD instanceGateway =
+				new ExecutionGraphTestUtils.SimpleActorGatewayWithTDD(
+					TestingUtils.directExecutionContext(),
+					blobCache == null ? blobServer : blobCache);
 
 			final Instance instance = getInstance(new ActorTaskManagerGateway(instanceGateway));
 
@@ -131,6 +171,7 @@ public class ExecutionGraphDeploymentTest {
 			vertex.deployToSlot(slot);
 
 			assertEquals(ExecutionState.DEPLOYING, vertex.getExecutionState());
+			checkTaskOffloaded(eg, vertex.getJobvertexId());
 
 			TaskDeploymentDescriptor descr = instanceGateway.lastTDD;
 			assertNotNull(descr);
@@ -138,6 +179,7 @@ public class ExecutionGraphDeploymentTest {
 			JobInformation jobInformation = descr.getSerializedJobInformation().deserializeValue(getClass().getClassLoader());
 			TaskInformation taskInformation = descr.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
 
+			assertEquals(jobId, descr.getJobId());
 			assertEquals(jobId, jobInformation.getJobId());
 			assertEquals(jid2, taskInformation.getJobVertexId());
 			assertEquals(3, descr.getSubtaskIndex());
@@ -380,7 +422,9 @@ public class ExecutionGraphDeploymentTest {
 			new SerializedValue<>(new ExecutionConfig()),
 			AkkaUtils.getDefaultTimeout(),
 			new NoRestartStrategy(),
-			scheduler);
+			scheduler,
+			blobServer);
+		checkJobOffloaded(eg);
 
 		eg.setQueuedSchedulingAllowed(false);
 
@@ -447,15 +491,18 @@ public class ExecutionGraphDeploymentTest {
 
 		// execution graph that executes actions synchronously
 		ExecutionGraph eg = new ExecutionGraph(
-				new DirectScheduledExecutorService(),
-				TestingUtils.defaultExecutor(),
-				jobId,
-				"some job",
-				new Configuration(),
-				new SerializedValue<>(new ExecutionConfig()),
-				AkkaUtils.getDefaultTimeout(),
-				new NoRestartStrategy(),
-				scheduler);
+			new DirectScheduledExecutorService(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			"some job",
+			new Configuration(),
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			scheduler,
+			blobServer);
+		checkJobOffloaded(eg);
+		
 		eg.setQueuedSchedulingAllowed(false);
 
 		List<JobVertex> ordered = Arrays.asList(v1, v2);
@@ -533,7 +580,7 @@ public class ExecutionGraphDeploymentTest {
 			new NoRestartStrategy(),
 			new UnregisteredMetricsGroup(),
 			1,
-			null,
+			blobServer,
 			LoggerFactory.getLogger(getClass()));
 	}
 }
