@@ -361,27 +361,29 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	public SerializedValue<TaskInformation> getSerializedTaskInformation() throws IOException {
 
-		if (null == serializedTaskInformation) {
-			// TODO: actually, at the moment, multiple threads may enter this code
-			// -> we may be able to avoid some unnecessary work here
+		// only one thread should offload the task information, so let's also let only one thread
+		// serialize the task information!
+		synchronized (stateMonitor) {
+			if (null == serializedTaskInformation) {
 
-			int parallelism = getParallelism();
-			int maxParallelism = getMaxParallelism();
+				int parallelism = getParallelism();
+				int maxParallelism = getMaxParallelism();
 
-			if (LOG.isDebugEnabled()) {
-				LOG.debug("Creating task information for " + generateDebugString());
-			}
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Creating task information for " + generateDebugString());
+				}
 
-			serializedTaskInformation = new SerializedValue<>(
+				serializedTaskInformation = new SerializedValue<>(
 					new TaskInformation(
-							jobVertex.getID(),
-							jobVertex.getName(),
-							parallelism,
-							maxParallelism,
-							jobVertex.getInvokableClassName(),
-							jobVertex.getConfiguration()));
+						jobVertex.getID(),
+						jobVertex.getName(),
+						parallelism,
+						maxParallelism,
+						jobVertex.getInvokableClassName(),
+						jobVertex.getConfiguration()));
 
-			taskInformationBlobKey = tryOffLoadTaskInformation();
+				taskInformationBlobKey = tryOffLoadTaskInformation();
+			}
 		}
 
 		return serializedTaskInformation;

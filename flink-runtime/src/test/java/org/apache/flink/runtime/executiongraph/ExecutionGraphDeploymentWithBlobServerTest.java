@@ -18,20 +18,29 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobServer;
-import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.junit.After;
 import org.junit.Before;
+import org.mockito.Matchers;
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 /**
  * Tests {@link ExecutionGraph} deployment when offloading job and task information into the BLOB
@@ -39,12 +48,31 @@ import static org.junit.Assert.assertNotNull;
  */
 public class ExecutionGraphDeploymentWithBlobServerTest extends ExecutionGraphDeploymentTest {
 
+	private Set<byte[]> seenHashes = Collections.newSetFromMap(new ConcurrentHashMap<byte[], Boolean>());
+
 	@Before
 	public void setupBlobServer() throws IOException {
 		Configuration config = new Configuration();
 		// always offload the serialized job and task information
 		config.setInteger(JobManagerOptions.TDD_OFFLOAD_MINSIZE, 0);
-		blobServer = new BlobServer(config, new VoidBlobStore());
+		blobServer = Mockito.spy(new BlobServer(config, new VoidBlobStore()));
+
+		seenHashes.clear();
+
+		// verify that we do not upload the same content more than once
+		doAnswer(
+			new Answer() {
+				@Override
+				public Object answer(InvocationOnMock invocation) throws Throwable {
+					BlobKey key = (BlobKey) invocation.callRealMethod();
+
+					assertTrue(seenHashes.add(key.getHash()));
+
+					return key;
+				}
+			}
+		).when(blobServer).putHA(any(JobID.class), Matchers.<byte[]>any());
+
 		blobServer.start();
 	}
 

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.blob;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.util.AbstractID;
 import org.apache.flink.util.StringUtils;
 
@@ -92,7 +93,8 @@ public final class BlobKey implements Serializable, Comparable<BlobKey> {
 	 *
 	 * @return a 20 bit hash of the contents the key refers to
 	 */
-	byte[] getHash() {
+	@VisibleForTesting
+	public byte[] getHash() {
 		return key;
 	}
 

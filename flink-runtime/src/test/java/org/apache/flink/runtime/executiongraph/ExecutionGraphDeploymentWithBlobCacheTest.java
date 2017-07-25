@@ -19,12 +19,10 @@
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.VoidBlobStore;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.junit.After;
 import org.junit.Before;
 
