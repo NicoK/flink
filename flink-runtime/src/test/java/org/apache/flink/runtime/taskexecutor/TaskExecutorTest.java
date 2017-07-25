@@ -658,10 +658,8 @@ public class TaskExecutorTest extends TestLogger {
 
 		final TaskDeploymentDescriptor tdd = new TaskDeploymentDescriptor(
 				jobId,
-				serializedJobInformation,
-				null,
-				serializedJobVertexInformation,
-				null,
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobInformation),
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
 				new ExecutionAttemptID(),
 				allocationId,
 				0,
@@ -1236,10 +1234,8 @@ public class TaskExecutorTest extends TestLogger {
 
 			final TaskDeploymentDescriptor tdd = new TaskDeploymentDescriptor(
 				jobId,
-				serializedJobInformation,
-				null,
-				serializedJobVertexInformation,
-				null,
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobInformation),
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
 				new ExecutionAttemptID(),
 				allocationId1,
 				0,

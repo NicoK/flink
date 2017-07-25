@@ -45,31 +45,72 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private static final long serialVersionUID = -3233562176034358530L;
 
 	/**
-	 * Serialized job information or <tt>null</tt> if offloaded.
+	 * Wrapper class for serialized values which may be offloaded to the {@link
+	 * org.apache.flink.runtime.blob.BlobServer} or not.
+	 *
+	 * @param <T>
+	 * 		type of the serialized value
 	 */
-	@Nullable
-	private SerializedValue<JobInformation> serializedJobInformation;
+	public static class MaybeOffloaded<T> implements Serializable {
+		private static final long serialVersionUID = 5977104446396536907L;
+	}
 
 	/**
-	 * The key of the offloaded job information BLOB containing {@link
-	 * #serializedJobInformation} or <tt>null</tt> if not offloaded.
+	 * A serialized value that is not offloaded to the {@link org.apache.flink.runtime.blob.BlobServer}.
+	 *
+	 * @param <T>
+	 * 		type of the serialized value
 	 */
-	@Nullable
-	private BlobKey serializedJobInformationBlobKey;
+	public static class NonOffloaded<T> extends MaybeOffloaded<T> {
+		private static final long serialVersionUID = 4246628617754862463L;
 
+		/**
+		 * The serialized value.
+		 */
+		public SerializedValue<T> serializedValue;
+
+		@SuppressWarnings("unused")
+		public NonOffloaded() {
+		}
+
+		public NonOffloaded(SerializedValue<T> serializedValue) {
+			this.serializedValue = Preconditions.checkNotNull(serializedValue);
+		}
+	}
+
+	/**
+	 * Reference to a serialized value that was offloaded to the {@link
+	 * org.apache.flink.runtime.blob.BlobServer}.
+	 *
+	 * @param <T>
+	 * 		type of the serialized value
+	 */
+	public static class Offloaded<T> extends MaybeOffloaded<T> {
+		private static final long serialVersionUID = 4544135485379071679L;
+
+		/**
+		 * The key of the offloaded value BLOB.
+		 */
+		public BlobKey serializedValueKey;
+
+		@SuppressWarnings("unused")
+		public Offloaded() {
+		}
+
+		public Offloaded(BlobKey serializedValueKey) {
+			this.serializedValueKey = Preconditions.checkNotNull(serializedValueKey);
+		}
+	}
+
+	/**
+	 * Serialized job information or <tt>null</tt> if offloaded.
+	 */
+	private MaybeOffloaded<JobInformation> serializedJobInformation;
 
 	/**
 	 * Serialized task information or <tt>null</tt> if offloaded.
 	 */
-	@Nullable
-	private SerializedValue<TaskInformation> serializedTaskInformation;
-
-	/**
-	 * The key of the offloaded task information BLOB containing {@link
-	 * #serializedTaskInformation} or <tt>null</tt> if not offloaded.
-	 */
-	@Nullable
-	private BlobKey serializedTaskInformationBlobKey;
+	private MaybeOffloaded<TaskInformation> serializedTaskInformation;
 
 	/**
 	 * The ID referencing the job this task belongs to.
@@ -105,10 +146,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public TaskDeploymentDescriptor(
 			JobID jobId,
-			@Nullable SerializedValue<JobInformation> serializedJobInformation,
-			@Nullable BlobKey serializedJobInformationBlobKey,
-			@Nullable SerializedValue<TaskInformation> serializedTaskInformation,
-			@Nullable BlobKey serializedTaskInformationBlobKey,
+			MaybeOffloaded<JobInformation> serializedJobInformation,
+			MaybeOffloaded<TaskInformation> serializedTaskInformation,
 			ExecutionAttemptID executionAttemptId,
 			AllocationID allocationId,
 			int subtaskIndex,
@@ -120,27 +159,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
-		Preconditions.checkArgument(
-			serializedJobInformation != null || serializedJobInformationBlobKey != null,
-			"Either serialized job information must be present or a BLOB key pointing towards its off-loaded location.");
-		this.serializedJobInformationBlobKey = serializedJobInformationBlobKey;
-		if (serializedJobInformationBlobKey != null) {
-			// offloaded data that will be restored on the receiver of the TaskDeploymentDescriptor
-			this.serializedJobInformation = null;
-		} else {
-			this.serializedJobInformation = serializedJobInformation;
-		}
-
-		Preconditions.checkArgument(
-			serializedTaskInformation != null || serializedTaskInformationBlobKey != null,
-			"Either serialized task information must be present or a BLOB key pointing towards its off-loaded location.");
-		this.serializedTaskInformationBlobKey = serializedTaskInformationBlobKey;
-		if (serializedTaskInformationBlobKey != null) {
-			// offloaded data that will be restored on the receiver of the TaskDeploymentDescriptor
-			this.serializedTaskInformation = null;
-		} else {
-			this.serializedTaskInformation = serializedTaskInformation;
-		}
+		this.serializedJobInformation = Preconditions.checkNotNull(serializedJobInformation);
+		this.serializedTaskInformation = Preconditions.checkNotNull(serializedTaskInformation);
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
@@ -168,7 +188,14 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	 */
 	@Nullable
 	public SerializedValue<JobInformation> getSerializedJobInformation() {
-		return serializedJobInformation;
+		if (serializedJobInformation instanceof NonOffloaded) {
+			NonOffloaded<JobInformation> jobInformation =
+				(NonOffloaded<JobInformation>) serializedJobInformation;
+			return jobInformation.serializedValue;
+		} else {
+			throw new IllegalStateException(
+				"Trying to work with offloaded serialized job information.");
+		}
 	}
 
 	/**
@@ -179,7 +206,14 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	 */
 	@Nullable
 	public SerializedValue<TaskInformation> getSerializedTaskInformation() {
-		return serializedTaskInformation;
+		if (serializedJobInformation instanceof NonOffloaded) {
+			NonOffloaded<TaskInformation> jobInformation =
+				(NonOffloaded<TaskInformation>) serializedTaskInformation;
+			return jobInformation.serializedValue;
+		} else {
+			throw new IllegalStateException(
+				"Trying to work with offloaded serialized job information.");
+		}
 	}
 
 	/**
@@ -251,27 +285,35 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	public void loadBigData(@Nullable PermanentBlobService blobService)
 			throws IOException, ClassNotFoundException {
 
-		// re-integrate offloaded job info and delete blob
+		// re-integrate offloaded job info from blob
 		// here, if this fails, we need to throw the exception as there is no backup path anymore
-		if (serializedJobInformation == null) {
+		if (serializedJobInformation instanceof Offloaded) {
+			BlobKey jobInfoKey = ((Offloaded<JobInformation>) serializedJobInformation).serializedValueKey;
+
 			Preconditions.checkNotNull(blobService);
 
-			final File dataFile = blobService.getHAFile(jobId, serializedJobInformationBlobKey);
+			final File dataFile = blobService.getHAFile(jobId, jobInfoKey);
 			// NOTE: Do not delete the job info BLOB since it may be needed again during recovery.
 			//       (it is deleted automatically on the BLOB server and cache when the job
 			//       enters a terminal state)
-			serializedJobInformation = SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
+			SerializedValue<JobInformation> serializedValue =
+				SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
+			serializedJobInformation = new NonOffloaded<>(serializedValue);
 		}
 
-		// re-integrate offloaded task info and delete blob
-		if (serializedTaskInformation == null) {
+		// re-integrate offloaded task info from blob
+		if (serializedTaskInformation instanceof Offloaded) {
+			BlobKey taskInfoKey = ((Offloaded<TaskInformation>) serializedTaskInformation).serializedValueKey;
+
 			Preconditions.checkNotNull(blobService);
 
-			final File dataFile = blobService.getHAFile(jobId, serializedTaskInformationBlobKey);
+			final File dataFile = blobService.getHAFile(jobId, taskInfoKey);
 			// NOTE: Do not delete the task info BLOB since it may be needed again during recovery.
 			//       (it is deleted automatically on the BLOB server and cache when the job
 			//       enters a terminal state)
-			serializedTaskInformation = SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
+			SerializedValue<TaskInformation> serializedValue =
+				SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
+			serializedTaskInformation = new NonOffloaded<>(serializedValue);
 		}
 
 		// make sure that the serialized job and task information fields are filled

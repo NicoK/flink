@@ -77,10 +77,8 @@ public class TaskDeploymentDescriptorTest {
 
 			final TaskDeploymentDescriptor orig = new TaskDeploymentDescriptor(
 				jobID,
-				serializedJobInformation,
-				null,
-				serializedJobVertexInformation,
-				null,
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobInformation),
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
 				execId,
 				allocationId,
 				indexInSubtaskGroup,

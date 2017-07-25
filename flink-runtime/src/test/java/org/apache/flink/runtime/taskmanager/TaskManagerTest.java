@@ -2151,10 +2151,8 @@ public class TaskManagerTest extends TestLogger {
 
 		return new TaskDeploymentDescriptor(
 			jobId,
-			serializedJobInformation,
-			null,
-			serializedJobVertexInformation,
-			null,
+			new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobInformation),
+			new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
 			executionAttemptId,
 			new AllocationID(),
 			subtaskIndex,
