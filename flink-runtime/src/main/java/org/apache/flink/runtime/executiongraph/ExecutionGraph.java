@@ -26,8 +26,8 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
@@ -434,7 +434,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		// If the serialized job information inside serializedJobInformation is larger than this,
 		// we try to offload it to the BLOB server.
 		final int rpcOffloadMinSize =
-			blobServer.getConfiguration().getInteger(AkkaOptions.AKKA_RPC_OFFLOAD_MINSIZE);
+			blobServer.getConfiguration().getInteger(JobManagerOptions.TDD_OFFLOAD_MINSIZE);
 
 		if (serializedJobInformation.getByteArray().length > rpcOffloadMinSize) {
 			LOG.info("Storing job {} information at the BLOB server", getJobID());

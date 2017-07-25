@@ -25,7 +25,6 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.io.InputSplit;
@@ -418,7 +417,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		// If the serialized task information inside #serializedTaskInformation is larger than this,
 		// we try to offload it to the BLOB server.
 		final int rpcOffloadMinSize =
-			blobServer.getConfiguration().getInteger(AkkaOptions.AKKA_RPC_OFFLOAD_MINSIZE);
+			blobServer.getConfiguration().getInteger(JobManagerOptions.TDD_OFFLOAD_MINSIZE);
 
 		if (serializedTaskInformation.getByteArray().length > rpcOffloadMinSize) {
 			LOG.info("Storing task {} information at the BLOB server", getJobVertexId());
