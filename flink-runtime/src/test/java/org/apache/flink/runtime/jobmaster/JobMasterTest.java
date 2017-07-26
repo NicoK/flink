@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
@@ -94,17 +95,20 @@ public class JobMasterTest extends TestLogger {
 
 		final JobGraph jobGraph = new JobGraph();
 
-		try {
+		Configuration configuration = new Configuration();
+		try (BlobServer blobServer = new BlobServer(configuration, new VoidBlobStore())) {
+			blobServer.start();
+
 			final JobMaster jobMaster = new JobMaster(
 				rpc,
 				jmResourceId,
 				jobGraph,
-				new Configuration(),
+				configuration,
 				haServices,
 				heartbeatServices,
 				Executors.newScheduledThreadPool(1),
-				mock(BlobServer.class),
-				mock(BlobLibraryCacheManager.class),
+				blobServer,
+				new BlobLibraryCacheManager(blobServer),
 				mock(RestartStrategyFactory.class),
 				Time.of(10, TimeUnit.SECONDS),
 				null,
@@ -187,17 +191,20 @@ public class JobMasterTest extends TestLogger {
 
 		final TestingFatalErrorHandler testingFatalErrorHandler = new TestingFatalErrorHandler();
 
-		try {
+		Configuration configuration = new Configuration();
+		try (BlobServer blobServer = new BlobServer(configuration, new VoidBlobStore())) {
+			blobServer.start();
+
 			final JobMaster jobMaster = new JobMaster(
 				rpc,
 				jmResourceId,
 				jobGraph,
-				new Configuration(),
+				configuration,
 				haServices,
 				heartbeatServices,
 				Executors.newScheduledThreadPool(1),
-				mock(BlobServer.class),
-				mock(BlobLibraryCacheManager.class),
+				blobServer,
+				new BlobLibraryCacheManager(blobServer),
 				mock(RestartStrategyFactory.class),
 				Time.of(10, TimeUnit.SECONDS),
 				null,
