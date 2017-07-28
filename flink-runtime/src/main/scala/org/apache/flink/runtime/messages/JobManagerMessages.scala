@@ -60,12 +60,14 @@ object JobManagerMessages {
    *
    * The submission result will be sent back to the sender as a success message.
    *
-   * @param jobGraph The job to be submitted to the JobManager
+   * @param jobID the ID of the job to submit
+   * @param jobGraphKey The blobKey to the jobGraph of the job to be submitted to the JobManager
    * @param listeningBehaviour Specifies to what the sender wants to listen (detached, execution
    *                           result, execution result and state changes)
    */
   case class SubmitJob(
-      jobGraph: JobGraph,
+      jobID: JobID,
+      jobGraphKey: BlobKey,
       listeningBehaviour: ListeningBehaviour)
     extends RequiresLeaderSessionID
 

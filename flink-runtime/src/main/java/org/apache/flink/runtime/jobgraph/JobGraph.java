@@ -25,14 +25,19 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.BlobKey;
+import org.apache.flink.runtime.blob.TransientBlobService;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.util.SerializedValue;
 import scala.concurrent.duration.FiniteDuration;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.net.InetSocketAddress;
 import java.net.URL;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -524,23 +529,66 @@ public class JobGraph implements Serializable {
 	}
 
 	/**
-	 * Uploads the previously added user JAR files to the job manager through
-	 * the job manager's BLOB server. The respective port is retrieved from the
-	 * JobManager. This function issues a blocking call.
+	 * Uploads the previously added user JAR files to the given BLOB server.
+	 * This function issues a blocking call.
 	 *
-	 * @param jobManager JobManager actor gateway
-	 * @param askTimeout Ask timeout
+	 * @param blobServerAddress Server address of the {@link org.apache.flink.runtime.blob.BlobServer}
 	 * @param blobClientConfig the blob client configuration
 	 * @throws IOException Thrown, if the file upload to the JobManager failed.
 	 */
-	public void uploadUserJars(ActorGateway jobManager, FiniteDuration askTimeout,
+	public void uploadUserJars(InetSocketAddress blobServerAddress,
 			Configuration blobClientConfig) throws IOException {
-		List<BlobKey> blobKeys = BlobClient.uploadJarFiles(jobManager, askTimeout, blobClientConfig, jobID, userJars);
+		List<BlobKey> blobKeys = BlobClient.uploadJarFiles(blobServerAddress, blobClientConfig, jobID, userJars);
 
 		for (BlobKey blobKey : blobKeys) {
 			if (!userJarBlobKeys.contains(blobKey)) {
 				userJarBlobKeys.add(blobKey);
 			}
+		}
+	}
+
+	/**
+	 * Uploads the previously added user JAR files to the given BLOB server.
+	 * This function issues a blocking call.
+	 *
+	 * @param blobServerAddress Server address of the {@link org.apache.flink.runtime.blob.BlobServer}
+	 * @param blobClientConfig the blob client configuration
+	 * @return key to the uploaded BLOB
+	 * @throws IOException Thrown, if the file upload to the JobManager failed.
+	 */
+	public BlobKey uploadGraph(InetSocketAddress blobServerAddress,
+			Configuration blobClientConfig) throws IOException {
+		SerializedValue<JobGraph> jobGraphSerialized = new SerializedValue<>(this);
+		return BlobClient.uploadTransientBlob(blobServerAddress, blobClientConfig, jobID, jobGraphSerialized.getByteArray());
+	}
+
+	/**
+	 * Create a {@link JobGraph} from a serialized value in a BLOB stored at a transient BLOB service.
+	 *
+	 * @param blobService the BLOB service to retrieve the value from
+	 * @param jobId the job this graph belongs to
+	 * @param jobGraphKey the BLOB key pointing to the location of the BLOB
+	 * @return a new job graph object
+	 * @throws IOException if the download or deserialization fails
+	 */
+	public static JobGraph loadFromBlobStore(
+			TransientBlobService blobService, JobID jobId, BlobKey jobGraphKey) throws IOException {
+		try {
+			final File dataFile = blobService.getFile(jobId, jobGraphKey);
+			SerializedValue<JobGraph> serializedValue =
+				SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
+			JobGraph jobGraph = serializedValue.deserializeValue(ClassLoader.getSystemClassLoader());
+			if (!jobGraph.getJobID().equals(jobId)) {
+				throw new IOException(
+					"Inconsistent JobGraph deserialization: jobIDs do not match: " + jobId +
+						" vs. " + jobGraph.getJobID());
+			}
+			return jobGraph;
+		} catch (ClassNotFoundException e) {
+			throw new IOException("Failed to deserialize the JobGraph", e);
+		} finally {
+			// clean up and remove the transient BLOB
+			blobService.delete(jobId, jobGraphKey);
 		}
 	}
 

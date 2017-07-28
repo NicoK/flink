@@ -482,8 +482,10 @@ class JobManager(
     case RequestTotalNumberOfSlots =>
       sender ! decorateMessage(instanceManager.getTotalNumberOfSlots)
 
-    case SubmitJob(jobGraph, listeningBehaviour) =>
+    case SubmitJob(jobId, jobGraphKey, listeningBehaviour) =>
       val client = sender()
+
+      val jobGraph = JobGraph.loadFromBlobStore(blobServer, jobId, jobGraphKey)
 
       val jobInfo = new JobInfo(client, listeningBehaviour, System.currentTimeMillis(),
         jobGraph.getSessionTimeout)

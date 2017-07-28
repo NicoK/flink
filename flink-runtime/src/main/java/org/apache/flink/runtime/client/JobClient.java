@@ -31,6 +31,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.akka.ListeningBehaviour;
+import org.apache.flink.runtime.blob.BlobClient;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoader;
@@ -416,9 +417,29 @@ public class JobClient {
 		checkNotNull(jobGraph, "The jobGraph must not be null.");
 		checkNotNull(timeout, "The timeout must not be null.");
 
+		LOG.info("Retrieving BlobServer address");
+		final InetSocketAddress blobServerAddress;
+		try {
+			blobServerAddress = BlobClient.getBlobServerAddress(jobManagerGateway, timeout);
+		}
+		catch (IOException e) {
+			throw new JobSubmissionException(jobGraph.getJobID(),
+				"Could not retrieve the BlobServer address from the JobManager.", e);
+		}
+
 		LOG.info("Checking and uploading JAR files");
 		try {
-			jobGraph.uploadUserJars(jobManagerGateway, timeout, config);
+			jobGraph.uploadUserJars(blobServerAddress, config);
+		}
+		catch (IOException e) {
+			throw new JobSubmissionException(jobGraph.getJobID(),
+				"Could not upload the program's JAR files to the JobManager.", e);
+		}
+
+		LOG.info("Storing JobGraph at the BlobServer");
+		final BlobKey jobGraphKey;
+		try {
+			jobGraphKey = jobGraph.uploadGraph(blobServerAddress, config);
 		}
 		catch (IOException e) {
 			throw new JobSubmissionException(jobGraph.getJobID(),
@@ -429,7 +450,8 @@ public class JobClient {
 		try {
 			Future<Object> future = jobManagerGateway.ask(
 				new JobManagerMessages.SubmitJob(
-					jobGraph,
+					jobGraph.getJobID(),
+					jobGraphKey,
 					ListeningBehaviour.DETACHED // only receive the Acknowledge for the job submission message
 				),
 				timeout);
