@@ -59,7 +59,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public boolean add(Buffer buffer) throws IOException {
+	public boolean add(Buffer buffer, int bytesWritten) throws IOException {
 		checkNotNull(buffer);
 
 		// view reference accessible outside the lock, but assigned inside the locked scope
@@ -71,9 +71,10 @@ class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			// Add the buffer and update the stats
+			// TODO: only add the buffer if it is another instance!
 			buffers.add(buffer);
 			reader = readView;
-			updateStatistics(buffer);
+			updateStatistics(1, bytesWritten);
 		}
 
 		// Notify the listener outside of the synchronized block
@@ -98,7 +99,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 			buffers.add(buffer);
 			reader = readView;
-			updateStatistics(buffer);
+			updateStatistics(1, buffer.getWriterIndex());
 
 			isFinished = true;
 		}

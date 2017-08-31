@@ -87,7 +87,7 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
-	public boolean add(Buffer buffer) throws IOException {
+	public boolean add(Buffer buffer, int bytesWritten) throws IOException {
 		checkNotNull(buffer);
 
 		synchronized (buffers) {
@@ -98,9 +98,11 @@ class SpillableSubpartition extends ResultSubpartition {
 			// The number of buffers are needed later when creating
 			// the read views. If you ever remove this line here,
 			// make sure to still count the number of buffers.
-			updateStatistics(buffer);
+			updateStatistics(1, bytesWritten);
 
 			if (spillWriter == null) {
+
+				// TODO: only add the buffer if it is another instance!
 				buffers.add(buffer);
 
 				return true;
@@ -108,6 +110,7 @@ class SpillableSubpartition extends ResultSubpartition {
 		}
 
 		// Didn't return early => go to disk
+		// TODO: can we overwrite the previous buffer file if it is the same buffer?
 		spillWriter.writeBlock(buffer);
 
 		return true;
@@ -115,8 +118,10 @@ class SpillableSubpartition extends ResultSubpartition {
 
 	@Override
 	public void finish() throws IOException {
+		Buffer buffer = EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE);
+
 		synchronized (buffers) {
-			if (add(EventSerializer.toBuffer(EndOfPartitionEvent.INSTANCE))) {
+			if (add(buffer, buffer.getWriterIndex())) {
 				isFinished = true;
 			}
 		}
