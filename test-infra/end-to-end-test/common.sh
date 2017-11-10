@@ -76,6 +76,7 @@ function stop_cluster {
   elif [[ "$CLUSTER_MODE" == "cluster" ]]; then
     $FLINK_DIR/bin/stop-cluster.sh
   fi
+  cat $FLINK_DIR/log/*
 
   if grep -rv "GroupCoordinatorNotAvailableException" $FLINK_DIR/log \
       | grep -v "RetriableCommitFailedException" \
