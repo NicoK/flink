@@ -132,7 +132,7 @@ case $TEST in
 		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
 	;;
 	(connectors)
-		MVN_COMPILE_MODULES="-pl $MODULES_CONNECTORS -am"
+		MVN_COMPILE_MODULES="-pl flink-dist -am"
 		MVN_TEST_MODULES="-pl $MODULES_CONNECTORS"
 		MVN_COMPILE_OPTIONS="-Dcheckstyle.skip=true -Djapicmp.skip=true -Drat.skip=true"
 		MVN_TEST_OPTIONS="-Dcheckstyle.skip=true"
@@ -452,15 +452,14 @@ echo "RUNNING '${MVN_COMPILE}'."
 # Run $MVN_COMPILE and pipe output to $MVN_OUT for the watchdog. The PID is written to $MVN_PID to
 # allow the watchdog to kill $MVN if it is not producing any output anymore. $MVN_EXIT contains
 # the exit code. This is important for Travis' build life-cycle (success/failure).
-# ( $MVN_COMPILE & PID=$! ; echo $PID >&3 ; wait $PID ; echo $? >&4 ) 3>$MVN_PID 4>$MVN_EXIT | tee $MVN_OUT
-# 
-# EXIT_CODE=$(<$MVN_EXIT)
-# 
-# echo "MVN exited with EXIT CODE: ${EXIT_CODE}."
+( $MVN_COMPILE & PID=$! ; echo $PID >&3 ; wait $PID ; echo $? >&4 ) 3>$MVN_PID 4>$MVN_EXIT | tee $MVN_OUT
 
-# rm $MVN_PID
-# rm $MVN_EXIT
-EXIT_CODE=0
+EXIT_CODE=$(<$MVN_EXIT)
+
+echo "MVN exited with EXIT CODE: ${EXIT_CODE}."
+
+rm $MVN_PID
+rm $MVN_EXIT
 
 # Run tests if compilation was successful
 if [ $EXIT_CODE == 0 ]; then
