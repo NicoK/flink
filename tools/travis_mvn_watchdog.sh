@@ -71,37 +71,40 @@ flink-libraries/flink-table,\
 flink-queryable-state/flink-queryable-state-runtime,\
 flink-queryable-state/flink-queryable-state-client-java"
 
+# MODULES_CONNECTORS="\
+# flink-contrib/flink-connector-wikiedits,\
+# flink-filesystems/flink-hadoop-fs,\
+# flink-filesystems/flink-mapr-fs,\
+# flink-filesystems/flink-s3-fs-hadoop,\
+# flink-filesystems/flink-s3-fs-presto,\
+# flink-formats/flink-avro,\
+# flink-connectors/flink-hbase,\
+# flink-connectors/flink-hcatalog,\
+# flink-connectors/flink-hadoop-compatibility,\
+# flink-connectors/flink-jdbc,\
+# flink-connectors/flink-connector-cassandra,\
+# flink-connectors/flink-connector-elasticsearch,\
+# flink-connectors/flink-connector-elasticsearch2,\
+# flink-connectors/flink-connector-elasticsearch5,\
+# flink-connectors/flink-connector-elasticsearch-base,\
+# flink-connectors/flink-connector-filesystem,\
+# flink-connectors/flink-connector-kafka-0.8,\
+# flink-connectors/flink-connector-kafka-0.9,\
+# flink-connectors/flink-connector-kafka-0.10,\
+# flink-connectors/flink-connector-kafka-base,\
+# flink-connectors/flink-connector-nifi,\
+# flink-connectors/flink-connector-rabbitmq,\
+# flink-connectors/flink-connector-twitter"
 MODULES_CONNECTORS="\
-flink-contrib/flink-connector-wikiedits,\
-flink-filesystems/flink-hadoop-fs,\
-flink-filesystems/flink-mapr-fs,\
 flink-filesystems/flink-s3-fs-hadoop,\
-flink-filesystems/flink-s3-fs-presto,\
-flink-formats/flink-avro,\
-flink-connectors/flink-hbase,\
-flink-connectors/flink-hcatalog,\
-flink-connectors/flink-hadoop-compatibility,\
-flink-connectors/flink-jdbc,\
-flink-connectors/flink-connector-cassandra,\
-flink-connectors/flink-connector-elasticsearch,\
-flink-connectors/flink-connector-elasticsearch2,\
-flink-connectors/flink-connector-elasticsearch5,\
-flink-connectors/flink-connector-elasticsearch-base,\
-flink-connectors/flink-connector-filesystem,\
-flink-connectors/flink-connector-kafka-0.8,\
-flink-connectors/flink-connector-kafka-0.9,\
-flink-connectors/flink-connector-kafka-0.10,\
-flink-connectors/flink-connector-kafka-base,\
-flink-connectors/flink-connector-nifi,\
-flink-connectors/flink-connector-rabbitmq,\
-flink-connectors/flink-connector-twitter"
+flink-filesystems/flink-s3-fs-presto"
 
 MODULES_TESTS="\
 flink-tests"
 
-if [[ $PROFILE != *"scala-2.10"* ]]; then
-	MODULES_CONNECTORS="$MODULES_CONNECTORS,flink-connectors/flink-connector-kafka-0.11"
-fi
+# if [[ $PROFILE != *"scala-2.10"* ]]; then
+# 	MODULES_CONNECTORS="$MODULES_CONNECTORS,flink-connectors/flink-connector-kafka-0.11"
+# fi
 
 if [[ $PROFILE == *"include-kinesis"* ]]; then
 	case $TEST in
@@ -449,14 +452,15 @@ echo "RUNNING '${MVN_COMPILE}'."
 # Run $MVN_COMPILE and pipe output to $MVN_OUT for the watchdog. The PID is written to $MVN_PID to
 # allow the watchdog to kill $MVN if it is not producing any output anymore. $MVN_EXIT contains
 # the exit code. This is important for Travis' build life-cycle (success/failure).
-( $MVN_COMPILE & PID=$! ; echo $PID >&3 ; wait $PID ; echo $? >&4 ) 3>$MVN_PID 4>$MVN_EXIT | tee $MVN_OUT
+# ( $MVN_COMPILE & PID=$! ; echo $PID >&3 ; wait $PID ; echo $? >&4 ) 3>$MVN_PID 4>$MVN_EXIT | tee $MVN_OUT
+# 
+# EXIT_CODE=$(<$MVN_EXIT)
+# 
+# echo "MVN exited with EXIT CODE: ${EXIT_CODE}."
 
-EXIT_CODE=$(<$MVN_EXIT)
-
-echo "MVN exited with EXIT CODE: ${EXIT_CODE}."
-
-rm $MVN_PID
-rm $MVN_EXIT
+# rm $MVN_PID
+# rm $MVN_EXIT
+EXIT_CODE=0
 
 # Run tests if compilation was successful
 if [ $EXIT_CODE == 0 ]; then
@@ -562,6 +566,29 @@ case $TEST in
 			printf "==============================================================================\n"
 		fi
 	;;
+	# REMOVE AGAIN:
+	(connectors)
+		if [ $EXIT_CODE == 0 ]; then
+			printf "\n\n==============================================================================\n"
+			printf "Running end-to-end tests\n"
+			printf "==============================================================================\n"
+
+			printf "\n==============================================================================\n"
+			printf "Running Shaded Hadoop S3A end-to-end test\n"
+			printf "==============================================================================\n"
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_hadoop_s3a.sh
+			EXIT_CODE=$(($EXIT_CODE+$?))
+
+			printf "\n==============================================================================\n"
+			printf "Running Shaded Presto S3 end-to-end test\n"
+			printf "==============================================================================\n"
+			FLINK_DIR=build-target CLUSTER_MODE=cluster test-infra/end-to-end-test/test_shaded_presto_s3.sh
+			EXIT_CODE=$(($EXIT_CODE+$?))
+		else
+			printf "\n==============================================================================\n"
+			printf "Previous build failure detected, skipping end-to-end tests.\n"
+			printf "==============================================================================\n"
+		fi
 esac
 
 # Exit code for Travis build success/failure
