@@ -99,7 +99,7 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 
 	public void setUp() throws Exception {
 		senderEnv = createNettyNetworkEnvironment(2048);
-		receiverEnv = createNettyNetworkEnvironment(2048);;
+		receiverEnv = createNettyNetworkEnvironment(2048);
 		ioManager = new IOManagerAsync();
 
 		senderEnv.start();
@@ -138,7 +138,7 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	public static class Receiver extends CheckedThread {
 		private static final Logger LOG = LoggerFactory.getLogger(Receiver.class);
 
-		private final MutableRecordReader reader;
+		private final MutableRecordReader<LongValue> reader;
 
 		private CompletableFuture<Long> expectedRecords = new CompletableFuture<>();
 		private CompletableFuture<?> recordsProcessed = new CompletableFuture<>();
@@ -243,7 +243,8 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	//  Setup Utilities
 	// ------------------------------------------------------------------------
 
-	private NetworkEnvironment createNettyNetworkEnvironment(int bufferPoolSize) throws Exception {
+	private NetworkEnvironment createNettyNetworkEnvironment(
+			@SuppressWarnings("SameParameterValue") int bufferPoolSize) throws Exception {
 
 		final NetworkBufferPool bufferPool = new NetworkBufferPool(bufferPoolSize, BUFFER_SIZE, MemoryType.OFF_HEAP);
 
@@ -269,9 +270,9 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	}
 
 	private ResultPartitionWriter createResultPartition(
-		JobID jobId,
-		ResultPartitionID partitionId,
-		NetworkEnvironment env) throws Exception {
+			JobID jobId,
+			ResultPartitionID partitionId,
+			NetworkEnvironment env) throws Exception {
 
 		ResultPartition resultPartition = new ResultPartition(
 			"sender task",
@@ -300,12 +301,12 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	}
 
 	private SingleInputGate createInputGate(
-		JobID jobId,
-		IntermediateDataSetID dataSetID,
-		ResultPartitionID consumedPartitionId,
-		ExecutionAttemptID executionAttemptID,
-		TaskManagerLocation senderLocation,
-		NetworkEnvironment env) throws IOException {
+			JobID jobId,
+			IntermediateDataSetID dataSetID,
+			ResultPartitionID consumedPartitionId,
+			ExecutionAttemptID executionAttemptID,
+			TaskManagerLocation senderLocation,
+			NetworkEnvironment env) throws IOException {
 
 		final InputChannelDeploymentDescriptor channelDescr = new InputChannelDeploymentDescriptor(
 			consumedPartitionId,
@@ -345,7 +346,7 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	 * A dummy implementation of the {@link TaskActions}. We implement this here rather than using Mockito
 	 * to avoid using mockito in this benchmark class.
 	 */
-	private static class NoOpTaskActions implements TaskActions {
+	private static final class NoOpTaskActions implements TaskActions {
 
 		@Override
 		public void triggerPartitionProducerStateCheck(

@@ -30,8 +30,8 @@ import java.util.concurrent.TimeUnit;
 public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<LongValue> {
 	private static final long RECEIVER_TIMEOUT = 2000;
 
-	protected NetworkBenchmarkEnvironment.Receiver receiver;
-	protected RecordWriter recordWriter;
+	protected Receiver receiver;
+	protected RecordWriter<LongValue> recordWriter;
 
 	public void executeThroughputBenchmark(long records) throws Exception {
 		final LongValue value = new LongValue();
@@ -47,6 +47,7 @@ public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<Lo
 		recordsReceived.get(RECEIVER_TIMEOUT, TimeUnit.MILLISECONDS);
 	}
 
+	@Override
 	public void setUp() throws Exception {
 		super.setUp();
 
@@ -54,6 +55,7 @@ public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<Lo
 		recordWriter = createRecordWriter();
 	}
 
+	@Override
 	public void tearDown() {
 		super.tearDown();
 
