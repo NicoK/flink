@@ -27,11 +27,16 @@ import java.util.concurrent.TimeUnit;
 /**
  * Context for network benchmarks executed in flink-benchmark.
  */
-public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<LongValue> {
-	private static final long RECEIVER_TIMEOUT = 2_000;
+public class NetworkPointToMultipointBenchmark extends NetworkBenchmarkEnvironment<LongValue> {
+	private static final long RECEIVER_TIMEOUT = 30_000;
 
+	final public int channels;
 	protected Receiver receiver;
 	protected RecordWriter<LongValue> recordWriter;
+
+	public NetworkPointToMultipointBenchmark(int channels) {
+		this.channels = channels;
+	}
 
 	public void executeThroughputBenchmark(long records) throws Exception {
 		final LongValue value = new LongValue();
@@ -51,7 +56,6 @@ public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<Lo
 	public void setUp() throws Exception {
 		super.setUp();
 
-		final int channels = 1;
 		receiver = createReceiver(SerializingLongReceiver.class, channels);
 		recordWriter = createRecordWriter(channels);
 	}
@@ -61,5 +65,6 @@ public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<Lo
 		super.tearDown();
 
 		receiver.shutdown();
+		System.out.println(receiver);
 	}
 }

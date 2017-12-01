@@ -21,12 +21,23 @@ package org.apache.flink.runtime.io.network;
 import org.junit.Test;
 
 /**
- * Tests for {@link NetworkPointToPointBenchmark}.
+ * Tests for various network benchmarks based on {@link NetworkBenchmarkEnvironment}.
  */
-public class NetworkPointToPointBenchmarkTest {
+public class NetworkBenchmarkTests {
 	@Test
-	public void test() throws Exception {
+	public void pointToPointBenchmark() throws Exception {
 		NetworkPointToPointBenchmark benchmark = new NetworkPointToPointBenchmark();
+		benchmark.setUp();
+		try {
+			benchmark.executeThroughputBenchmark(1_000);
+		}
+		finally {
+			benchmark.tearDown();
+		}
+	}
+	@Test
+	public void pointToMultiPointBenchmark() throws Exception {
+		NetworkPointToMultipointBenchmark benchmark = new NetworkPointToMultipointBenchmark(100);
 		benchmark.setUp();
 		try {
 			benchmark.executeThroughputBenchmark(1_000);

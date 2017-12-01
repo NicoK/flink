@@ -48,6 +48,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.operators.testutils.UnregisteredTaskMetricsGroup.DummyTaskIOMetricGroup;
 import org.apache.flink.runtime.query.KvStateRegistry;
@@ -115,19 +116,19 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		suppressExceptions(ioManager::shutdown);
 	}
 
-	public RecordWriter<T> createRecordWriter() throws Exception {
-		ResultPartitionWriter sender = createResultPartition(jobId, senderID, senderEnv);
+	public RecordWriter<T> createRecordWriter(int channels) throws Exception {
+		ResultPartitionWriter sender = createResultPartition(jobId, senderID, senderEnv, channels);
 		return new RecordWriter<>(sender);
 	}
 
-	public <C extends Receiver> C createReceiver(Class<C> clazz) throws Exception {
+	public <C extends Receiver> C createReceiver(Class<C> clazz, int channels) throws Exception {
 		TaskManagerLocation senderLocation = new TaskManagerLocation(
 			ResourceID.generate(),
 			LOCAL_ADDRESS,
 			senderEnv.getConnectionManager().getDataPort());
 
-		SingleInputGate receiverGate = createInputGate(
-			jobId, dataSetID, senderID, executionAttemptID, senderLocation, receiverEnv);
+		InputGate receiverGate = createInputGate(
+			jobId, dataSetID, senderID, executionAttemptID, senderLocation, receiverEnv, channels);
 
 		final C receiver;
 		// avoid reflection or duplicates (as enum values) here
@@ -340,7 +341,8 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	private ResultPartitionWriter createResultPartition(
 			JobID jobId,
 			ResultPartitionID partitionId,
-			NetworkEnvironment env) throws Exception {
+			NetworkEnvironment env,
+			int channels) throws Exception {
 
 		ResultPartition resultPartition = new ResultPartition(
 			"sender task",
@@ -348,19 +350,20 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 			jobId,
 			partitionId,
 			ResultPartitionType.PIPELINED_BOUNDED,
-			1,
+			channels,
 			1,
 			env.getResultPartitionManager(),
 			new NoOpResultPartitionConsumableNotifier(),
 			ioManager,
 			false);
-		ResultPartitionWriter partitionWriter = new ResultPartitionWriter(
-			resultPartition);
+		ResultPartitionWriter partitionWriter = new ResultPartitionWriter(resultPartition);
 
-		int numBuffers = TaskManagerOptions.NETWORK_BUFFERS_PER_CHANNEL.defaultValue() +
+		// similar to NetworkEnvironment#registerTask()
+		int numBuffers = resultPartition.getNumberOfSubpartitions() *
+			TaskManagerOptions.NETWORK_BUFFERS_PER_CHANNEL.defaultValue() +
 			TaskManagerOptions.NETWORK_EXTRA_BUFFERS_PER_GATE.defaultValue();
 
-		BufferPool bufferPool = env.getNetworkBufferPool().createBufferPool(1, numBuffers);
+		BufferPool bufferPool = env.getNetworkBufferPool().createBufferPool(channels, numBuffers);
 		resultPartition.registerBufferPool(bufferPool);
 
 		env.getResultPartitionManager().registerResultPartition(resultPartition);
@@ -368,42 +371,53 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		return partitionWriter;
 	}
 
-	private SingleInputGate createInputGate(
+	private InputGate createInputGate(
 			JobID jobId,
 			IntermediateDataSetID dataSetID,
 			ResultPartitionID consumedPartitionId,
 			ExecutionAttemptID executionAttemptID,
 			TaskManagerLocation senderLocation,
-			NetworkEnvironment env) throws IOException {
+			NetworkEnvironment env,
+			int channels) throws IOException {
 
-		final InputChannelDeploymentDescriptor channelDescr = new InputChannelDeploymentDescriptor(
-			consumedPartitionId,
-			ResultPartitionLocation.createRemote(new ConnectionID(senderLocation, 0)));
+		InputGate[] gates = new InputGate[channels];
+		for (int i = 0; i < channels; ++i) {
+			final InputChannelDeploymentDescriptor channelDescr = new InputChannelDeploymentDescriptor(
+				consumedPartitionId,
+				ResultPartitionLocation.createRemote(new ConnectionID(senderLocation, i)));
 
-		final InputGateDeploymentDescriptor gateDescr = new InputGateDeploymentDescriptor(
-			dataSetID,
-			ResultPartitionType.PIPELINED_BOUNDED,
-			0,
-			new InputChannelDeploymentDescriptor[] { channelDescr } );
+			final InputGateDeploymentDescriptor gateDescr = new InputGateDeploymentDescriptor(
+				dataSetID,
+				ResultPartitionType.PIPELINED_BOUNDED,
+				i,
+				new InputChannelDeploymentDescriptor[] { channelDescr } );
 
-		SingleInputGate gate = SingleInputGate.create(
-			"receiving task",
-			jobId,
-			executionAttemptID,
-			gateDescr,
-			env,
-			new NoOpTaskActions(),
-			new DummyTaskIOMetricGroup());
+			SingleInputGate gate = SingleInputGate.create(
+				"receiving task[" + i + "]",
+				jobId,
+				executionAttemptID,
+				gateDescr,
+				env,
+				new NoOpTaskActions(),
+				new DummyTaskIOMetricGroup());
 
-		int numBuffers = TaskManagerOptions.NETWORK_BUFFERS_PER_CHANNEL.defaultValue() +
-			TaskManagerOptions.NETWORK_EXTRA_BUFFERS_PER_GATE.defaultValue();
+			// similar to NetworkEnvironment#registerTask()
+			int numBuffers = gate.getNumberOfInputChannels() *
+				TaskManagerOptions.NETWORK_BUFFERS_PER_CHANNEL.defaultValue() +
+				TaskManagerOptions.NETWORK_EXTRA_BUFFERS_PER_GATE.defaultValue();
 
-		BufferPool bufferPool =
-			env.getNetworkBufferPool().createBufferPool(1, numBuffers);
+			BufferPool bufferPool =
+				env.getNetworkBufferPool().createBufferPool(gate.getNumberOfInputChannels(), numBuffers);
 
-		gate.setBufferPool(bufferPool);
+			gate.setBufferPool(bufferPool);
+			gates[i] = gate;
+		}
 
-		return gate;
+		if (channels > 1) {
+			return new UnionInputGate(gates);
+		} else {
+			return gates[0];
+		}
 	}
 
 	// ------------------------------------------------------------------------
