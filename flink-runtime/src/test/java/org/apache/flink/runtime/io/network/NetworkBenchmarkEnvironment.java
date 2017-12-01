@@ -61,6 +61,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.CompletableFuture;
 
+import static org.apache.flink.runtime.io.network.netty.NettyConfig.NUM_THREADS_CLIENT;
+import static org.apache.flink.runtime.io.network.netty.NettyConfig.NUM_THREADS_SERVER;
 import static org.apache.flink.util.ExceptionUtils.suppressExceptions;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -71,7 +73,10 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 
 	private static final int BUFFER_SIZE = TaskManagerOptions.MEMORY_SEGMENT_SIZE.defaultValue();
 
-	private static final int NUM_SLOTS_AND_THREADS = 1;
+	/**
+	 * Number of netty IO threads per sender and receiver.
+	 */
+	private static final int NUM_IO_THREADS = 8;
 
 	private static final InetAddress LOCAL_ADDRESS;
 
@@ -242,8 +247,11 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 
 		final NetworkBufferPool bufferPool = new NetworkBufferPool(bufferPoolSize, BUFFER_SIZE, MemoryType.OFF_HEAP);
 
+		Configuration config = new Configuration();
+		config.setInteger(NUM_THREADS_SERVER, NUM_IO_THREADS);
+		config.setInteger(NUM_THREADS_CLIENT, NUM_IO_THREADS);
 		final NettyConnectionManager nettyConnectionManager = new NettyConnectionManager(
-			new NettyConfig(LOCAL_ADDRESS, 0, BUFFER_SIZE, NUM_SLOTS_AND_THREADS, new Configuration()));
+			new NettyConfig(LOCAL_ADDRESS, 0, BUFFER_SIZE, 1, config));
 
 		return new NetworkEnvironment(
 			bufferPool,
