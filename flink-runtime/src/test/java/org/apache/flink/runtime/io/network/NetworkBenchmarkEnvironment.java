@@ -44,6 +44,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNo
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.operators.testutils.UnregisteredTaskMetricsGroup.DummyTaskIOMetricGroup;
@@ -117,7 +118,7 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		return new RecordWriter<>(sender);
 	}
 
-	public Receiver createReceiver() throws Exception {
+	public <C extends Receiver> C createReceiver(Class<C> clazz) throws Exception {
 		TaskManagerLocation senderLocation = new TaskManagerLocation(
 			ResourceID.generate(),
 			LOCAL_ADDRESS,
@@ -126,7 +127,14 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		SingleInputGate receiverGate = createInputGate(
 			jobId, dataSetID, senderID, executionAttemptID, senderLocation, receiverEnv);
 
-		Receiver receiver = new Receiver(receiverGate);
+		final C receiver;
+		// avoid reflection or duplicates (as enum values) here
+		if (clazz == SerializingLongReceiver.class) {
+			receiver = (C) new SerializingLongReceiver(receiverGate);
+		} else {
+			throw new UnsupportedOperationException("No receiver class " + clazz);
+		}
+
 		receiver.start();
 		return receiver;
 	}
@@ -135,47 +143,37 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 	//  Receivers
 	// ------------------------------------------------------------------------
 
-	public static class Receiver extends CheckedThread {
-		private static final Logger LOG = LoggerFactory.getLogger(Receiver.class);
 
-		private final MutableRecordReader<LongValue> reader;
+	public static abstract class Receiver extends CheckedThread {
+		protected static final Logger LOG = LoggerFactory.getLogger(Receiver.class);
 
-		private CompletableFuture<Long> expectedRecords = new CompletableFuture<>();
-		private CompletableFuture<?> recordsProcessed = new CompletableFuture<>();
+		protected CompletableFuture<Long> expectedRecords = new CompletableFuture<>();
+		protected CompletableFuture<?> recordsProcessed = new CompletableFuture<>();
 
-		private long maxLatency;
-		private long minLatency;
-		private long sumLatency;
-		private long sumLatencySquare;
-		private int numSamples;
+		protected volatile boolean running;
 
-		private volatile boolean running;
-
-		Receiver(SingleInputGate receiver) {
+		Receiver() {
 			setName(this.getClass().getName());
 
 			this.running = true;
-			this.reader = new MutableRecordReader<>(
-				receiver,
-				new String[] {
-					EnvironmentInformation.getTemporaryFileDirectory()
-				});
 		}
 
 		public synchronized CompletableFuture<?> setExpectedRecords(long nextExpectedRecordsBatch) {
 			checkState(!expectedRecords.isDone());
 			checkState(!recordsProcessed.isDone());
+
 			expectedRecords.complete(nextExpectedRecordsBatch);
 			return recordsProcessed;
 		}
 
-		private synchronized CompletableFuture<Long> getExpectedRecords() {
+		protected synchronized CompletableFuture<Long> getExpectedRecords() {
 			return expectedRecords;
 		}
 
-		private synchronized void finishProcessingExpectedRecords() {
+		protected synchronized void finishProcessingExpectedRecords() {
 			checkState(expectedRecords.isDone());
 			checkState(!recordsProcessed.isDone());
+
 			recordsProcessed.complete(null);
 			expectedRecords = new CompletableFuture<>();
 			recordsProcessed = new CompletableFuture<>();
@@ -184,9 +182,6 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		@Override
 		public void go() throws Exception {
 			try {
-				maxLatency = Long.MIN_VALUE;
-				minLatency = Long.MAX_VALUE;
-
 				while (running) {
 					readRecords(getExpectedRecords().get());
 					finishProcessingExpectedRecords();
@@ -196,10 +191,41 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 				if (running) {
 					throw e;
 				}
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
 		}
 
-		private void readRecords(long remaining) throws Exception {
+		protected abstract void readRecords(long remaining) throws Exception;
+
+		public void shutdown() {
+			running = false;
+			interrupt();
+			expectedRecords.complete(0L);
+		}
+
+	}
+
+	public static class SerializingLongReceiver extends Receiver {
+
+		private long maxLatency = Long.MIN_VALUE;
+		private long minLatency = Long.MAX_VALUE;
+		private long sumLatency;
+		private long sumLatencySquare;
+		private int numSamples;
+
+		private final MutableRecordReader<LongValue> reader;
+
+		public SerializingLongReceiver(InputGate inputGate) {
+			super();
+			this.reader = new MutableRecordReader<>(
+				inputGate,
+				new String[] {
+					EnvironmentInformation.getTemporaryFileDirectory()
+				});
+		}
+
+		protected void readRecords(long remaining) throws Exception {
 			LOG.debug("readRecords(remaining = {})", remaining);
 			final LongValue value = new LongValue();
 
@@ -216,12 +242,6 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 				}
 			}
 
-		}
-
-		public void shutdown() {
-			running = false;
-			interrupt();
-			expectedRecords.complete(0L);
 		}
 
 		public long getMaxLatency() {

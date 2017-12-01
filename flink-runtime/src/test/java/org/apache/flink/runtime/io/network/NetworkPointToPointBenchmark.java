@@ -51,7 +51,7 @@ public class NetworkPointToPointBenchmark extends NetworkBenchmarkEnvironment<Lo
 	public void setUp() throws Exception {
 		super.setUp();
 
-		receiver = createReceiver();
+		receiver = createReceiver(SerializingLongReceiver.class);
 		recordWriter = createRecordWriter();
 	}
 
