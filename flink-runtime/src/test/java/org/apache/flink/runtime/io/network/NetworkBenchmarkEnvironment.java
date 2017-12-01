@@ -146,6 +146,7 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		private long maxLatency;
 		private long minLatency;
 		private long sumLatency;
+		private long sumLatencySquare;
 		private int numSamples;
 
 		private volatile boolean running;
@@ -210,6 +211,7 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 					maxLatency = Math.max(maxLatency, latencyNanos);
 					minLatency = Math.min(minLatency, latencyNanos);
 					sumLatency += latencyNanos;
+					sumLatencySquare += latencyNanos * latencyNanos;
 					numSamples++;
 				}
 			}
@@ -234,8 +236,21 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 			return numSamples == 0 ? 0 : sumLatency / numSamples;
 		}
 
-		public long getAvgNoExtremes() {
+		public long getAvgLatencyNoExtremes() {
 			return (numSamples > 2) ? (sumLatency - maxLatency - minLatency) / (numSamples - 2) : 0;
+		}
+
+		public long getStandardDeviationLatency() {
+			return numSamples == 0 ? 0 : (long) Math.sqrt(
+				sumLatencySquare / numSamples - sumLatency * sumLatency /
+					(numSamples * numSamples));
+		}
+
+		@Override
+		public String toString() {
+			return String.format("Receiver[avg=%d (%d), min=%d, max=%d, stddev=%d]",
+				getAvgLatency(), getAvgLatencyNoExtremes(), getMinLatency(), getMaxLatency(),
+				getStandardDeviationLatency());
 		}
 	}
 
