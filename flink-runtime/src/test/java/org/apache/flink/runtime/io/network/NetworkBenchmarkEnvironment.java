@@ -35,6 +35,7 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
@@ -44,6 +45,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNo
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
+import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -131,6 +133,8 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		// avoid reflection or duplicates (as enum values) here
 		if (clazz == SerializingLongReceiver.class) {
 			receiver = (C) new SerializingLongReceiver(receiverGate);
+		} else if (clazz == DroppingNonDeserializingLongReceiver.class) {
+			receiver = (C) new DroppingNonDeserializingLongReceiver(receiverGate);
 		} else {
 			throw new UnsupportedOperationException("No receiver class " + clazz);
 		}
@@ -271,6 +275,35 @@ public class NetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 			return String.format("Receiver[avg=%d (%d), min=%d, max=%d, stddev=%d]",
 				getAvgLatency(), getAvgLatencyNoExtremes(), getMinLatency(), getMaxLatency(),
 				getStandardDeviationLatency());
+		}
+	}
+
+	@SuppressWarnings("unused")
+	public static class DroppingNonDeserializingLongReceiver extends Receiver {
+
+		private final InputGate inputGate;
+
+		public DroppingNonDeserializingLongReceiver(InputGate inputGate) {
+			super();
+			this.inputGate = inputGate;
+		}
+
+		protected void readRecords(long remaining) throws Exception {
+			LOG.debug("readRecords(remaining = {})", remaining);
+			// assume LongValue instances here (4 bytes length, 8 bytes long)
+			final long expectedBytes = remaining * 12;
+
+			long readBytes = 0;
+
+			while (running && readBytes < expectedBytes) {
+				BufferOrEvent input = inputGate.getNextBufferOrEvent();
+				if (input.isBuffer()) {
+					Buffer buffer = input.getBuffer();
+					readBytes += buffer.getSize();
+					buffer.recycle();
+				}
+			}
+
 		}
 	}
 
