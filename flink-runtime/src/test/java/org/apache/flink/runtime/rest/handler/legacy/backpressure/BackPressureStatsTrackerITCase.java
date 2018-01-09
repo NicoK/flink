@@ -218,7 +218,7 @@ public class BackPressureStatsTrackerITCase extends TestLogger {
 							// 2) Release all buffers and let the tasks grab one
 							//
 							for (Buffer buf : buffers) {
-								buf.recycle();
+								buf.recycleBuffer();
 								Assert.assertTrue(buf.isRecycled());
 							}
 
@@ -317,7 +317,7 @@ public class BackPressureStatsTrackerITCase extends TestLogger {
 			while (true) {
 				Buffer buffer = testBufferPool.requestBufferBlocking();
 				// Got a buffer, yay!
-				buffer.recycle();
+				buffer.recycleBuffer();
 
 				new CountDownLatch(1).await();
 			}
