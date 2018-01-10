@@ -152,6 +152,16 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	}
 
 	/**
+	 * Creates a read-only duplicate buffer which shares the memory segment of this buffer.
+	 *
+	 * <p>Reader and writer indices as well as markers are not shared. Reference counters are
+	 * shared but the slice is not {@link #retainBuffer() retained} automatically.
+	 */
+	public ReadOnlyDuplicateNetworkBuffer readOnlyDuplicate() {
+		return new ReadOnlyDuplicateNetworkBuffer(this);
+	}
+
+	/**
 	 * Returns a read-only slice of this buffer's readable bytes, i.e. between
 	 * {@link #readerIndex()} and {@link #writerIndex()}.
 	 *
