@@ -133,7 +133,7 @@ public abstract class SubpartitionTestBase extends TestLogger {
 		assertTrue(view.isReleased());
 	}
 
-	protected void assertNextBuffer(
+	static void assertNextBuffer(
 			ResultSubpartitionView readView,
 			int expectedReadableBufferSize,
 			boolean expectedIsMoreAvailable,
