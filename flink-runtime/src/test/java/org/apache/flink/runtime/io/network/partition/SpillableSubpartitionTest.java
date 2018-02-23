@@ -25,12 +25,11 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsyncWithNoOpBufferFileWriter;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
-import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -52,8 +51,6 @@ import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.
 import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.createFilledBufferConsumer;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
@@ -222,59 +219,24 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertEquals(1, listener.getNumNotifications());
 
 		assertFalse(reader.nextBufferIsEvent()); // buffer
-		BufferAndBacklog read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertTrue(read.buffer().isBuffer());
+		assertNextBuffer(reader, BUFFER_DATA_SIZE, true, 2, false, true);
 		assertEquals(2, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		assertFalse(read.buffer().isRecycled());
-		read.buffer().recycleBuffer();
-		assertTrue(read.buffer().isRecycled());
-		assertFalse(read.nextBufferIsEvent());
 
 		assertFalse(reader.nextBufferIsEvent()); // buffer
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertTrue(read.buffer().isBuffer());
+		assertNextBuffer(reader, BUFFER_DATA_SIZE, true, 1, true, true);
 		assertEquals(1, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		assertFalse(read.buffer().isRecycled());
-		read.buffer().recycleBuffer();
-		assertTrue(read.buffer().isRecycled());
-		assertTrue(read.nextBufferIsEvent());
 
 		assertTrue(reader.nextBufferIsEvent()); // event
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertFalse(read.buffer().isBuffer());
+		assertNextEvent(reader, BUFFER_DATA_SIZE, null, true, 1, false, true);
 		assertEquals(1, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		read.buffer().recycleBuffer();
-		assertFalse(read.nextBufferIsEvent());
 
 		assertFalse(reader.nextBufferIsEvent()); // buffer
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertTrue(read.buffer().isBuffer());
+		assertNextBuffer(reader, BUFFER_DATA_SIZE, true, 0, true, true);
 		assertEquals(0, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		assertFalse(read.buffer().isRecycled());
-		read.buffer().recycleBuffer();
-		assertTrue(read.buffer().isRecycled());
-		assertTrue(read.nextBufferIsEvent());
 
 		assertTrue(reader.nextBufferIsEvent()); // end of partition event
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertFalse(read.buffer().isBuffer());
+		assertNextEvent(reader, 4, EndOfPartitionEvent.class, false, 0, false, true);
 		assertEquals(0, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		assertEquals(EndOfPartitionEvent.class,
-			EventSerializer.fromBuffer(read.buffer(), ClassLoader.getSystemClassLoader()).getClass());
-		assertFalse(read.buffer().isRecycled());
-		read.buffer().recycleBuffer();
-		assertTrue(read.buffer().isRecycled());
-		assertFalse(read.nextBufferIsEvent());
 
 		// finally check that the bufferConsumer has been freed after a successful (or failed) write
 		final long deadline = System.currentTimeMillis() + 30_000L; // 30 secs
@@ -312,16 +274,12 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		assertFalse(bufferConsumer.isRecycled());
 
 		assertFalse(reader.nextBufferIsEvent());
-		BufferAndBacklog read = reader.getNextBuffer(); // first buffer (non-spilled)
-		assertNotNull(read);
-		assertTrue(read.buffer().isBuffer());
+		// first buffer (non-spilled)
+		assertNextBuffer(reader, BUFFER_DATA_SIZE, true, 2, false, false);
 		assertEquals(BUFFER_DATA_SIZE, partition.getTotalNumberOfBytes()); // only updated when getting/spilling the buffers
 		assertEquals(2, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		read.buffer().recycleBuffer();
 		assertEquals(2, listener.getNumNotifications());
 		assertFalse(bufferConsumer.isRecycled());
-		assertFalse(read.nextBufferIsEvent());
 
 		// Spill now
 		assertEquals(3, partition.releaseMemory());
@@ -335,53 +293,44 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		listener.awaitNotifications(3, 30_000);
 		assertEquals(3, listener.getNumNotifications());
 
+		// after consuming and releasing the next buffer, the bufferConsumer may be freed,
+		// depending on the timing of the last write operation
+		// -> retain once so that we can check below
+		Buffer buffer = bufferConsumer.build();
+		buffer.retainBuffer();
+
 		assertFalse(reader.nextBufferIsEvent()); // second buffer (retained in SpillableSubpartition#nextBuffer)
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertTrue(read.buffer().isBuffer());
+		assertNextBuffer(reader, BUFFER_DATA_SIZE, true, 1, true, false);
 		assertEquals(BUFFER_DATA_SIZE * 4 + 4, partition.getTotalNumberOfBytes()); // finally integrates the nextBuffer statistics
 		assertEquals(1, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		read.buffer().recycleBuffer();
-		// now the bufferConsumer may be freed, depending on the timing of the write operation
-		// -> let's do this check at the end of the test (to save some time)
-		assertTrue(read.nextBufferIsEvent());
+
+		// wait for successfully spilling the next buffer (before that we may not access the buffer!)
+		listener.awaitNotifications(4, 30_000);
+		assertEquals(4, listener.getNumNotifications());
 
 		assertTrue(reader.nextBufferIsEvent()); // the event (spilled)
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertFalse(read.buffer().isBuffer());
+		assertNextEvent(reader, BUFFER_DATA_SIZE, null, true, 1, false, true);
 		assertEquals(BUFFER_DATA_SIZE * 4 + 4, partition.getTotalNumberOfBytes()); // already updated during spilling
 		assertEquals(1, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		read.buffer().recycleBuffer();
-		assertFalse(read.nextBufferIsEvent());
+
+		// wait for successfully spilling the next buffer (before that we may not access the buffer!)
+		listener.awaitNotifications(5, 30_000);
+		assertEquals(5, listener.getNumNotifications());
+		bufferConsumer.close(); // recycle the retained buffer from above (should be the last reference!)
 
 		assertFalse(reader.nextBufferIsEvent()); // last buffer (spilled)
-		read = reader.getNextBuffer();
-		assertNotNull(read);
-		assertTrue(read.buffer().isBuffer());
+		assertNextBuffer(reader, BUFFER_DATA_SIZE, true, 0, true, true);
 		assertEquals(BUFFER_DATA_SIZE * 4 + 4, partition.getTotalNumberOfBytes()); // already updated during spilling
 		assertEquals(0, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		assertFalse(read.buffer().isRecycled());
-		read.buffer().recycleBuffer();
-		assertTrue(read.buffer().isRecycled());
-		assertTrue(read.nextBufferIsEvent());
+
+		buffer.recycleBuffer();
+		assertTrue(buffer.isRecycled());
 
 		// End of partition
 		assertTrue(reader.nextBufferIsEvent());
-		read = reader.getNextBuffer();
-		assertNotNull(read);
+		assertNextEvent(reader, 4, EndOfPartitionEvent.class, false, 0, false, true);
 		assertEquals(BUFFER_DATA_SIZE * 4 + 4, partition.getTotalNumberOfBytes()); // already updated during spilling
 		assertEquals(0, partition.getBuffersInBacklog());
-		assertEquals(partition.getBuffersInBacklog(), read.buffersInBacklog());
-		assertEquals(EndOfPartitionEvent.class,
-			EventSerializer.fromBuffer(read.buffer(), ClassLoader.getSystemClassLoader()).getClass());
-		assertFalse(read.buffer().isRecycled());
-		read.buffer().recycleBuffer();
-		assertTrue(read.buffer().isRecycled());
-		assertFalse(read.nextBufferIsEvent());
 
 		// finally check that the bufferConsumer has been freed after a successful (or failed) write
 		final long deadline = System.currentTimeMillis() + 30_000L; // 30 secs
