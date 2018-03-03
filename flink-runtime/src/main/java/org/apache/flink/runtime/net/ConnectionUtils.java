@@ -279,10 +279,10 @@ public class ConnectionUtils {
 
 					case HEURISTIC:
 						if (LOG.isDebugEnabled()) {
-							LOG.debug("Choosing InetAddress.getLocalHost() address as a heuristic.");
+							LOG.debug("Choosing InetAddress.getByName(\"localhost\") address as a heuristic.");
 						}
 
-						return InetAddress.getLocalHost();
+						return InetAddress.getByName("localhost");
 
 					default:
 						throw new RuntimeException("Unsupported strategy: " + strategy);

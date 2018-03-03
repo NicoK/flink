@@ -60,8 +60,8 @@ public class ConnectionUtilsTest {
 			// we should have found a heuristic address
 			assertNotNull(add);
 
-			// make sure that we returned the InetAddress.getLocalHost as a heuristic
-			assertEquals(InetAddress.getLocalHost(), add);
+			// make sure that we returned the InetAddress.getByName("localhost") as a heuristic
+			assertEquals(InetAddress.getByName("localhost"), add);
 		}
 	}
 
