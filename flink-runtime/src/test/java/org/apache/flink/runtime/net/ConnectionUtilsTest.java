@@ -45,7 +45,7 @@ public class ConnectionUtilsTest {
 
 	@Test
 	public void testReturnLocalHostAddressUsingHeuristics() throws Exception {
-		try (ServerSocket blocker = new ServerSocket(0, 1, InetAddress.getLocalHost())) {
+		try (ServerSocket blocker = new ServerSocket(0, 1, null)) {
 			// the "blocker" server socket simply does not accept connections
 			// this address is consequently "unreachable"
 			InetSocketAddress unreachable = new InetSocketAddress("localhost", blocker.getLocalPort());
