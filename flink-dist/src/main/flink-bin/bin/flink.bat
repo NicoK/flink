@@ -23,7 +23,7 @@ SET bin=%~dp0
 SET FLINK_ROOT_DIR=%bin%..
 SET FLINK_LIB_DIR=%FLINK_ROOT_DIR%\lib
 
-SET JVM_ARGS=-Xmx512m
+SET JVM_ARGS=-Xmx512m -Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=org.apache.flink.runtime.util.FatalExitExceptionHandler
 
 SET FLINK_JM_CLASSPATH=%FLINK_LIB_DIR%\*
 

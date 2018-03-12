@@ -28,6 +28,7 @@ import org.apache.flink.mesos.util.MesosConfiguration;
 import org.apache.flink.mesos.util.MesosResourceAllocation;
 import org.apache.flink.runtime.clusterframework.ContainerSpecification;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
+import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterators;
@@ -264,6 +265,8 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		if (tmParams.taskManagerDirectMemoryLimitMB() >= 0) {
 			jvmArgs.append(" -XX:MaxDirectMemorySize=").append(tmParams.taskManagerDirectMemoryLimitMB()).append("m");
 		}
+		jvmArgs.append(" -Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=")
+			.append(FatalExitExceptionHandler.class.getCanonicalName());
 
 		// pass dynamic system properties
 		jvmArgs.append(' ').append(

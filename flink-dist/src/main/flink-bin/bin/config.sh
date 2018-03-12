@@ -345,6 +345,7 @@ fi
 if [ -z "${JVM_ARGS}" ]; then
     JVM_ARGS=""
 fi
+JVM_ARGS="${JVM_ARGS} -Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=org.apache.flink.runtime.util.FatalExitExceptionHandler"
 
 # Check if deprecated HADOOP_HOME is set, and specify config path to HADOOP_CONF_DIR if it's empty.
 if [ -z "$HADOOP_CONF_DIR" ]; then

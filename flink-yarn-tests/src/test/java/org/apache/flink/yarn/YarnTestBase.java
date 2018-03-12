@@ -115,6 +115,8 @@ public abstract class YarnTestBase extends TestLogger {
 		"Remote connection to [null] failed with java.net.ConnectException: Connection refused",
 		"Remote connection to [null] failed with java.nio.channels.NotYetConnectedException",
 		"java.io.IOException: Connection reset by peer",
+		// part of the startup commands
+		"-Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=org.apache.flink.runtime.util.FatalExitExceptionHandler",
 
 		// this can happen in Akka 2.4 on shutdown.
 		"java.util.concurrent.RejectedExecutionException: Worker has already been shutdown"

@@ -29,6 +29,7 @@ import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobmaster.JobManagerGateway;
+import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 import org.apache.flink.runtime.webmonitor.WebMonitor;
 import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
 import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
@@ -390,9 +391,11 @@ public class BootstrapTools {
 		if (flinkConfig.getString(CoreOptions.FLINK_TM_JVM_OPTIONS).length() > 0) {
 			javaOpts += " " + flinkConfig.getString(CoreOptions.FLINK_TM_JVM_OPTIONS);
 		}
+		javaOpts += " -Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=" +
+			FatalExitExceptionHandler.class.getCanonicalName();
 		//applicable only for YarnMiniCluster secure test run
 		//krb5.conf file will be available as local resource in JM/TM container
-		if(hasKrb5) {
+		if (hasKrb5) {
 			javaOpts += " -Djava.security.krb5.conf=krb5.conf";
 		}
 		startCommandValues.put("jvmopts", javaOpts);

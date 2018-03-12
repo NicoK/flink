@@ -25,7 +25,7 @@ SET FLINK_LIB_DIR=%FLINK_ROOT_DIR%\lib
 SET FLINK_CONF_DIR=%FLINK_ROOT_DIR%\conf
 SET FLINK_LOG_DIR=%FLINK_ROOT_DIR%\log
 
-SET JVM_ARGS=-Xms1024m -Xmx1024m
+SET JVM_ARGS=-Xms1024m -Xmx1024m -Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=org.apache.flink.runtime.util.FatalExitExceptionHandler
 
 SET FLINK_CLASSPATH=%FLINK_LIB_DIR%\*
 
