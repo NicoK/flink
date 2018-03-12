@@ -1116,7 +1116,7 @@ under the License.
 						<log4j.configuration>${log4j.configuration}</log4j.configuration>
 						<codebase>${codebase}</codebase>
 					</systemPropertyVariables>
-					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseG1GC</argLine>
+					<argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseG1GC -Djava.util.concurrent.ForkJoinPool.common.exceptionHandler=org.apache.flink.runtime.util.FatalExitExceptionHandler</argLine>
 				</configuration>
 				<executions>
 					<!--execute all the unit tests-->
