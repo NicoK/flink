@@ -30,12 +30,16 @@ import org.apache.flink.util.TestLogger;
 import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static com.facebook.presto.hive.PrestoS3FileSystem.S3_USE_INSTANCE_CREDENTIALS;
@@ -53,12 +57,17 @@ import static org.junit.Assert.fail;
  * <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/Introduction.html#ConsistencyModel">consistency guarantees</a>
  * and what the {@link com.facebook.presto.hive.PrestoS3FileSystem} offers.
  */
+@RunWith(Parameterized.class)
 public class PrestoS3FileSystemITCase extends TestLogger {
+	@Parameterized.Parameter
+	public String scheme;
+
+	@Parameterized.Parameters(name = "Scheme = {0}")
+	public static List<String> parameters() {
+		return Arrays.asList("s3", "s3a");
+	}
 
 	private static final String BUCKET = System.getenv("ARTIFACTS_AWS_BUCKET");
-
-	private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
-
 	private static final String ACCESS_KEY = System.getenv("ARTIFACTS_AWS_ACCESS_KEY");
 	private static final String SECRET_KEY = System.getenv("ARTIFACTS_AWS_SECRET_KEY");
 
@@ -69,9 +78,13 @@ public class PrestoS3FileSystemITCase extends TestLogger {
 		Assume.assumeTrue("AWS S3 secret key not configured, skipping test...", SECRET_KEY != null);
 	}
 
+	private String getBasePath() {
+		return scheme + "://" + BUCKET + '/' + "tests-" + UUID.randomUUID();
+	}
+
 	@Test
 	public void testConfigKeysForwarding() throws Exception {
-		final Path path = new Path("s3://" + BUCKET + '/' + TEST_DATA_DIR);
+		final Path path = new Path(getBasePath());
 
 		// access without credentials should fail
 		{
@@ -145,7 +158,7 @@ public class PrestoS3FileSystemITCase extends TestLogger {
 
 		FileSystem.initialize(conf);
 
-		final Path path = new Path("s3://" + BUCKET + '/' + TEST_DATA_DIR + "/test.txt");
+		final Path path = new Path(getBasePath() + "/test.txt");
 		final FileSystem fs = path.getFileSystem();
 
 		try {
@@ -178,7 +191,7 @@ public class PrestoS3FileSystemITCase extends TestLogger {
 
 		FileSystem.initialize(conf);
 
-		final Path directory = new Path("s3://" + BUCKET + '/' + TEST_DATA_DIR + "/testdir/");
+		final Path directory = new Path(getBasePath() + "/testdir/");
 		final FileSystem fs = directory.getFileSystem();
 
 		// directory must not yet exist

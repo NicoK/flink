@@ -27,9 +27,13 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.facebook.presto.hive.PrestoS3FileSystem;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.Assert.assertTrue;
 
@@ -37,7 +41,15 @@ import static org.junit.Assert.assertTrue;
  * Unit tests for the S3 file system support via Presto's PrestoS3FileSystem.
  * These tests do not actually read from or write to S3.
  */
+@RunWith(Parameterized.class)
 public class PrestoS3FileSystemTest {
+	@Parameterized.Parameter
+	public String scheme;
+
+	@Parameterized.Parameters(name = "Scheme = {0}")
+	public static List<String> parameters() {
+		return Arrays.asList("s3", "s3a");
+	}
 
 	@Test
 	public void testConfigPropagation() throws Exception{
@@ -47,7 +59,7 @@ public class PrestoS3FileSystemTest {
 
 		FileSystem.initialize(conf);
 
-		FileSystem fs = FileSystem.get(new URI("s3://test"));
+		FileSystem fs = FileSystem.get(new URI(scheme + "://test"));
 		validateBasicCredentials(fs);
 	}
 
@@ -59,7 +71,7 @@ public class PrestoS3FileSystemTest {
 
 		FileSystem.initialize(conf);
 
-		FileSystem fs = FileSystem.get(new URI("s3://test"));
+		FileSystem fs = FileSystem.get(new URI(scheme + "://test"));
 		validateBasicCredentials(fs);
 	}
 
@@ -71,7 +83,7 @@ public class PrestoS3FileSystemTest {
 
 		FileSystem.initialize(conf);
 
-		FileSystem fs = FileSystem.get(new URI("s3://test"));
+		FileSystem fs = FileSystem.get(new URI(scheme + "://test"));
 		validateBasicCredentials(fs);
 	}
 
