@@ -27,6 +27,10 @@ public interface BufferListener {
 	/**
 	 * Notification callback if a buffer is recycled and becomes available in buffer pool.
 	 *
+	 * <p><strong>BEWARE:</strong> since this may be called from outside the thread that relies on
+	 * the listener's logic, any exception that occurs with this handler should be forwarded to the
+	 * responsible thread for handling (the buffer pool ignores any {@link Throwable} from here!).
+	 *
 	 * @param buffer buffer that becomes available in buffer pool.
 	 * @return true if the listener wants to be notified next time.
 	 */

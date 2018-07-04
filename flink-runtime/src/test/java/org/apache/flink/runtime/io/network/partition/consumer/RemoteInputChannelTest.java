@@ -52,6 +52,9 @@ import java.util.concurrent.Future;
 
 import scala.Tuple2;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasProperty;
+import static org.hamcrest.Matchers.isA;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -452,7 +455,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, null, thrown, inputChannel);
+			cleanup(networkBufferPool, null, null, thrown, inputChannel);
 		}
 	}
 
@@ -528,7 +531,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, null, thrown, inputChannel);
+			cleanup(networkBufferPool, null, null, thrown, inputChannel);
 		}
 	}
 
@@ -618,7 +621,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, null, thrown, inputChannel);
+			cleanup(networkBufferPool, null, null, thrown, inputChannel);
 		}
 	}
 
@@ -687,7 +690,51 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, null, thrown, channel1, channel2, channel3);
+			cleanup(networkBufferPool, null, null, thrown, channel1, channel2, channel3);
+		}
+	}
+
+	/**
+	 * Tests that failures are propagated correctly if
+	 * {@link RemoteInputChannel#notifyBufferAvailable(Buffer)} throws an exception.
+	 */
+	@Test
+	public void testFailureInNotifyBufferAvailable() throws Exception {
+		// Setup
+		final int numExclusiveBuffers = 0; // TODO:?
+		final int numFloatingBuffers = 1;
+		final int numTotalBuffers = numExclusiveBuffers + numFloatingBuffers;
+		final NetworkBufferPool networkBufferPool = new NetworkBufferPool(
+			numTotalBuffers, 32);
+
+		final SingleInputGate inputGate = createSingleInputGate();
+		final RemoteInputChannel inputChannel = createRemoteInputChannel(inputGate);
+		inputGate.setInputChannel(inputChannel.partitionId.getPartitionId(), inputChannel);
+		Buffer buffer = null;
+		Throwable thrown = null;
+		try {
+			final BufferPool bufferPool =
+				networkBufferPool.createBufferPool(numFloatingBuffers, numFloatingBuffers);
+			inputGate.setBufferPool(bufferPool);
+			// no exclusive buffers, also no requested subpartition (to trigger a failure in RemoteInputChannel#notifyBufferAvailable())
+
+			buffer = bufferPool.requestBufferBlocking();
+
+			// trigger subscription to buffer pool
+			inputChannel.onSenderBacklog(1);
+			// recycling will call RemoteInputChannel#notifyBufferAvailable() which will fail and
+			// this exception will be swallowed
+			buffer.recycleBuffer();
+			try {
+				inputChannel.checkError();
+				fail("The input channel should have an error based on the failure in RemoteInputChannel#notifyBufferAvailable()");
+			} catch (IOException e) {
+				assertThat(e, hasProperty("cause", isA(IllegalStateException.class)));
+			}
+		} catch (Throwable t) {
+			thrown = t;
+		} finally {
+			cleanup(networkBufferPool, null, buffer, thrown, inputChannel);
 		}
 	}
 
@@ -749,7 +796,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, executor, thrown, inputChannel);
+			cleanup(networkBufferPool, executor, null, thrown, inputChannel);
 		}
 	}
 
@@ -802,7 +849,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, executor, thrown, inputChannel);
+			cleanup(networkBufferPool, executor, null, thrown, inputChannel);
 		}
 	}
 
@@ -854,7 +901,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, executor, thrown, inputChannel);
+			cleanup(networkBufferPool, executor, null, thrown, inputChannel);
 		}
 	}
 
@@ -936,7 +983,7 @@ public class RemoteInputChannelTest {
 		} catch (Throwable t) {
 			thrown = t;
 		} finally {
-			cleanup(networkBufferPool, executor, thrown, inputChannel);
+			cleanup(networkBufferPool, executor, null, thrown, inputChannel);
 		}
 	}
 
@@ -1064,6 +1111,7 @@ public class RemoteInputChannelTest {
 	private void cleanup(
 			NetworkBufferPool networkBufferPool,
 			@Nullable ExecutorService executor,
+			@Nullable Buffer buffer,
 			@Nullable Throwable throwable,
 			InputChannel... inputChannels) throws Exception {
 		for (InputChannel inputChannel : inputChannels) {
@@ -1072,6 +1120,10 @@ public class RemoteInputChannelTest {
 			} catch (Throwable tInner) {
 				throwable = ExceptionUtils.firstOrSuppressed(tInner, throwable);
 			}
+		}
+
+		if (buffer != null && !buffer.isRecycled()) {
+			buffer.recycleBuffer();
 		}
 
 		try {

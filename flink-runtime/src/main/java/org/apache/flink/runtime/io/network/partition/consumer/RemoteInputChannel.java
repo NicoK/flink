@@ -353,39 +353,46 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	 */
 	@Override
 	public boolean notifyBufferAvailable(Buffer buffer) {
-		// Check the isReleased state outside synchronized block first to avoid
-		// deadlock with releaseAllResources running in parallel.
-		if (isReleased.get()) {
-			buffer.recycleBuffer();
-			return false;
-		}
-
-		boolean needMoreBuffers = false;
-		synchronized (bufferQueue) {
-			checkState(isWaitingForFloatingBuffers, "This channel should be waiting for floating buffers.");
-
-			// Important: double check the isReleased state inside synchronized block, so there is no
-			// race condition when notifyBufferAvailable and releaseAllResources running in parallel.
-			if (isReleased.get() || bufferQueue.getAvailableBufferSize() >= numRequiredBuffers) {
-				isWaitingForFloatingBuffers = false;
+		try {
+			// Check the isReleased state outside synchronized block first to avoid
+			// deadlock with releaseAllResources running in parallel.
+			if (isReleased.get()) {
 				buffer.recycleBuffer();
 				return false;
 			}
 
-			bufferQueue.addFloatingBuffer(buffer);
+			boolean needMoreBuffers = false;
+			synchronized (bufferQueue) {
+				checkState(isWaitingForFloatingBuffers,
+					"This channel should be waiting for floating buffers.");
 
-			if (bufferQueue.getAvailableBufferSize() == numRequiredBuffers) {
-				isWaitingForFloatingBuffers = false;
-			} else {
-				needMoreBuffers =  true;
+				// Important: double check the isReleased state inside synchronized block, so there is no
+				// race condition when notifyBufferAvailable and releaseAllResources running in parallel.
+				if (isReleased.get() ||
+					bufferQueue.getAvailableBufferSize() >= numRequiredBuffers) {
+					isWaitingForFloatingBuffers = false;
+					buffer.recycleBuffer();
+					return false;
+				}
+
+				bufferQueue.addFloatingBuffer(buffer);
+
+				if (bufferQueue.getAvailableBufferSize() == numRequiredBuffers) {
+					isWaitingForFloatingBuffers = false;
+				} else {
+					needMoreBuffers = true;
+				}
 			}
-		}
 
-		if (unannouncedCredit.getAndAdd(1) == 0) {
-			notifyCreditAvailable();
-		}
+			if (unannouncedCredit.getAndAdd(1) == 0) {
+				notifyCreditAvailable();
+			}
 
-		return needMoreBuffers;
+			return needMoreBuffers;
+		} catch (Throwable t) {
+			setError(t);
+			return false;
+		}
 	}
 
 	@Override
