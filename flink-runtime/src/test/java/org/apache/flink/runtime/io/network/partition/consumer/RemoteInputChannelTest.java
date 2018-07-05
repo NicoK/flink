@@ -701,7 +701,7 @@ public class RemoteInputChannelTest {
 	@Test
 	public void testFailureInNotifyBufferAvailable() throws Exception {
 		// Setup
-		final int numExclusiveBuffers = 0; // TODO:?
+		final int numExclusiveBuffers = 0;
 		final int numFloatingBuffers = 1;
 		final int numTotalBuffers = numExclusiveBuffers + numFloatingBuffers;
 		final NetworkBufferPool networkBufferPool = new NetworkBufferPool(
