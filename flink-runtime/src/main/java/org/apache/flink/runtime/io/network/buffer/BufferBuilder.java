@@ -79,10 +79,11 @@ public class BufferBuilder {
 		checkState(!isFinished());
 
 		int needed = source.remaining();
-		int available = getMaxCapacity() - positionMarker.getCached();
+		int currentPosition = positionMarker.getCached();
+		int available = getMaxCapacity() - currentPosition;
 		int toCopy = Math.min(needed, available);
 
-		memorySegment.put(positionMarker.getCached(), source, toCopy);
+		memorySegment.put(currentPosition, source, toCopy);
 		positionMarker.move(toCopy);
 		return toCopy;
 	}
@@ -104,9 +105,9 @@ public class BufferBuilder {
 	 * @return number of written bytes.
 	 */
 	public int finish() {
-		positionMarker.markFinished();
+		int writtenBytes = positionMarker.markFinished();
 		commit();
-		return getWrittenBytes();
+		return writtenBytes;
 	}
 
 	public boolean isFinished() {
@@ -114,20 +115,13 @@ public class BufferBuilder {
 	}
 
 	public boolean isFull() {
-		checkState(positionMarker.getCached() <= getMaxCapacity());
-		return positionMarker.getCached() == getMaxCapacity();
-	}
-
-	public boolean isEmpty() {
-		return positionMarker.getCached() == 0;
+		int currentPosition = positionMarker.getCached();
+		checkState(currentPosition <= getMaxCapacity());
+		return currentPosition == getMaxCapacity();
 	}
 
 	public int getMaxCapacity() {
 		return memorySegment.size();
-	}
-
-	private int getWrittenBytes() {
-		return positionMarker.getCached();
 	}
 
 	/**
@@ -156,7 +150,7 @@ public class BufferBuilder {
 	 * Cached writing implementation of {@link PositionMarker}.
 	 *
 	 * <p>Writer ({@link BufferBuilder}) and reader ({@link BufferConsumer}) caches must be implemented independently
-	 * of one another - for example the cached values can not accidentally leak from one to another.
+	 * of one another - so that the cached values can not accidentally leak from one to another.
 	 *
 	 * <p>Remember to commit the {@link SettablePositionMarker} to make the changes visible.
 	 */
@@ -181,12 +175,19 @@ public class BufferBuilder {
 			return PositionMarker.getAbsolute(cachedPosition);
 		}
 
-		public void markFinished() {
-			int newValue = -getCached();
+		/**
+		 * Marks this position as finished and returns the current position.
+		 *
+		 * @return current position as of {@link #getCached()}
+		 */
+		public int markFinished() {
+			int currentPosition = getCached();
+			int newValue = -currentPosition;
 			if (newValue == 0) {
 				newValue = FINISHED_EMPTY;
 			}
 			set(newValue);
+			return currentPosition;
 		}
 
 		public void move(int offset) {
