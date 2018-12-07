@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.netty;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.NetworkEnvironmentOptions;
 import org.apache.flink.runtime.net.SSLUtils;
+import org.apache.flink.util.MathUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,14 @@ public class NettyConfig {
 	static final String SERVER_THREAD_GROUP_NAME = "Flink Netty Server";
 
 	static final String CLIENT_THREAD_GROUP_NAME = "Flink Netty Client";
+
+	/**
+	 * Arenas allocate chunks of pageSize << maxOrder bytes. With these defaults, this results in
+	 * chunks of 4 MB.
+	 *
+	 * @see NetworkEnvironmentOptions#NUM_PAGES_MAX_ORDER
+	 */
+	static final int DEFAULT_PAGE_SIZE = 8192;
 
 	private final InetAddress serverAddress;
 
@@ -157,6 +166,20 @@ public class NettyConfig {
 	public boolean getSSLEnabled() {
 		return config.getBoolean(NetworkEnvironmentOptions.DATA_SSL_ENABLED)
 			&& SSLUtils.isInternalSSLEnabled(config);
+	}
+
+	public int getPageSize() {
+		return DEFAULT_PAGE_SIZE;
+	}
+
+	public int getMaxOrder() {
+		int maxOrder = config.getInteger(NetworkEnvironmentOptions.NUM_PAGES_MAX_ORDER);
+
+		// Assert the chunk size is not too small to fulfill the requirements of a single thread.
+		// We require the chunk size to be larger than 1MB based on the experiment results.
+		int minimumMaxOrder = 20 - MathUtils.log2strict(getPageSize());
+
+		return Math.max(minimumMaxOrder, maxOrder);
 	}
 
 	public Configuration getConfig() {

@@ -150,6 +150,15 @@ public class NetworkEnvironmentOptions {
 			.withDeprecatedKeys("taskmanager.net.num-arenas")
 			.withDescription("The number of Netty arenas.");
 
+	/**
+	 * Arenas allocate chunks of pageSize << maxOrder bytes. With these defaults, this results in
+	 * chunks of 4 MB.
+	 */
+	public static final ConfigOption<Integer> NUM_PAGES_MAX_ORDER = ConfigOptions
+		.key("taskmanager.network.netty.num-pages-max-order")
+		.defaultValue(9)
+		.withDescription("The power of 2 of the number of pages in each chunk.");
+
 	public static final ConfigOption<Integer> NUM_THREADS_SERVER =
 		key("taskmanager.network.netty.server.numThreads")
 			.defaultValue(-1)
