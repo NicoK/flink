@@ -386,7 +386,8 @@ public class SSLUtilsTest extends TestLogger {
 		serverConfig.setString(SecurityOptions.SSL_ALGORITHMS, "TLS_DHE_RSA_WITH_AES_128_CBC_SHA,TLS_DHE_RSA_WITH_AES_128_CBC_SHA256");
 
 		final SSLHandlerFactory serverSSLHandlerFactory = SSLUtils.createInternalServerSSLEngineFactory(serverConfig);
-		final SslHandler sslHandler = serverSSLHandlerFactory.createNettySSLHandler();
+		// note: a 'null' allocator seems to work here (probably only because we do not use the ssl engine!)
+		final SslHandler sslHandler = serverSSLHandlerFactory.createNettySSLHandler(null);
 
 		assertEquals(1, sslHandler.engine().getEnabledProtocols().length);
 		assertEquals("TLSv1", sslHandler.engine().getEnabledProtocols()[0]);
