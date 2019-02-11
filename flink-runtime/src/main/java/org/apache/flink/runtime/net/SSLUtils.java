@@ -42,6 +42,10 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -197,6 +201,61 @@ public class SSLUtils {
 		return config.getString(SecurityOptions.SSL_ALGORITHMS).split(",");
 	}
 
+	private static TrustManagerFactory getTrustManagerFactory(Configuration config, boolean internal)
+			throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException {
+		String trustStoreFilePath = getAndCheckOption(
+			config,
+			internal ? SecurityOptions.SSL_INTERNAL_TRUSTSTORE : SecurityOptions.SSL_REST_TRUSTSTORE,
+			SecurityOptions.SSL_TRUSTSTORE);
+
+		String trustStorePassword = getAndCheckOption(
+			config,
+			internal ? SecurityOptions.SSL_INTERNAL_TRUSTSTORE_PASSWORD : SecurityOptions.SSL_REST_TRUSTSTORE_PASSWORD,
+			SecurityOptions.SSL_TRUSTSTORE_PASSWORD);
+
+		KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+		try (InputStream trustStoreFile = Files
+			.newInputStream(new File(trustStoreFilePath).toPath())) {
+			trustStore.load(trustStoreFile, trustStorePassword.toCharArray());
+		}
+
+		TrustManagerFactory tmf =
+			TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+		tmf.init(trustStore);
+
+		return tmf;
+	}
+
+	private static KeyManagerFactory getKeyManagerFactory(Configuration config, boolean internal)
+			throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException,
+			UnrecoverableKeyException {
+		String keystoreFilePath = getAndCheckOption(
+			config,
+			internal ? SecurityOptions.SSL_INTERNAL_KEYSTORE : SecurityOptions.SSL_REST_KEYSTORE,
+			SecurityOptions.SSL_KEYSTORE);
+
+		String keystorePassword = getAndCheckOption(
+			config,
+			internal ? SecurityOptions.SSL_INTERNAL_KEYSTORE_PASSWORD : SecurityOptions.SSL_REST_KEYSTORE_PASSWORD,
+			SecurityOptions.SSL_KEYSTORE_PASSWORD);
+
+		String certPassword = getAndCheckOption(
+			config,
+			internal ? SecurityOptions.SSL_INTERNAL_KEY_PASSWORD : SecurityOptions.SSL_REST_KEY_PASSWORD,
+			SecurityOptions.SSL_KEY_PASSWORD);
+
+		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+		try (InputStream keyStoreFile = Files.newInputStream(new File(keystoreFilePath).toPath())) {
+			keyStore.load(keyStoreFile, keystorePassword.toCharArray());
+		}
+
+		KeyManagerFactory kmf =
+			KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+		kmf.init(keyStore, certPassword.toCharArray());
+
+		return kmf;
+	}
+
 	/**
 	 * Creates the SSL Context for internal SSL, if internal SSL is configured.
 	 * For internal SSL, the client and server side configuration are identical, because
@@ -209,40 +268,13 @@ public class SSLUtils {
 		if (!isInternalSSLEnabled(config)) {
 			return null;
 		}
-		String keystoreFilePath = getAndCheckOption(
-				config, SecurityOptions.SSL_INTERNAL_KEYSTORE, SecurityOptions.SSL_KEYSTORE);
-
-		String keystorePassword = getAndCheckOption(
-				config, SecurityOptions.SSL_INTERNAL_KEYSTORE_PASSWORD, SecurityOptions.SSL_KEYSTORE_PASSWORD);
-
-		String certPassword = getAndCheckOption(
-				config, SecurityOptions.SSL_INTERNAL_KEY_PASSWORD, SecurityOptions.SSL_KEY_PASSWORD);
-
-		String trustStoreFilePath = getAndCheckOption(
-				config, SecurityOptions.SSL_INTERNAL_TRUSTSTORE, SecurityOptions.SSL_TRUSTSTORE);
-
-		String trustStorePassword = getAndCheckOption(
-				config, SecurityOptions.SSL_INTERNAL_TRUSTSTORE_PASSWORD, SecurityOptions.SSL_TRUSTSTORE_PASSWORD);
 
 		String sslProtocolVersion = config.getString(SecurityOptions.SSL_PROTOCOL);
 		int sessionCacheSize = config.getInteger(SecurityOptions.SSL_INTERNAL_SESSION_CACHE_SIZE);
 		int sessionTimeoutMs = config.getInteger(SecurityOptions.SSL_INTERNAL_SESSION_TIMEOUT);
 
-		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		try (InputStream keyStoreFile = Files.newInputStream(new File(keystoreFilePath).toPath())) {
-			keyStore.load(keyStoreFile, keystorePassword.toCharArray());
-		}
-
-		KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		try (InputStream trustStoreFile = Files.newInputStream(new File(trustStoreFilePath).toPath())) {
-			trustStore.load(trustStoreFile, trustStorePassword.toCharArray());
-		}
-
-		KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-		kmf.init(keyStore, certPassword.toCharArray());
-
-		TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-		tmf.init(trustStore);
+		KeyManagerFactory kmf = getKeyManagerFactory(config, true);
+		TrustManagerFactory tmf = getTrustManagerFactory(config, true);
 
 		SSLContext sslContext = SSLContext.getInstance(sslProtocolVersion);
 		sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
@@ -276,42 +308,13 @@ public class SSLUtils {
 
 		KeyManager[] keyManagers = null;
 		if (configMode == RestSSLContextConfigMode.SERVER || configMode == RestSSLContextConfigMode.MUTUAL) {
-			String keystoreFilePath = getAndCheckOption(
-				config, SecurityOptions.SSL_REST_KEYSTORE, SecurityOptions.SSL_KEYSTORE);
-
-			String keystorePassword = getAndCheckOption(
-				config, SecurityOptions.SSL_REST_KEYSTORE_PASSWORD, SecurityOptions.SSL_KEYSTORE_PASSWORD);
-
-			String certPassword = getAndCheckOption(
-				config, SecurityOptions.SSL_REST_KEY_PASSWORD, SecurityOptions.SSL_KEY_PASSWORD);
-
-			KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-			try (InputStream keyStoreFile = Files.newInputStream(new File(keystoreFilePath).toPath())) {
-				keyStore.load(keyStoreFile, keystorePassword.toCharArray());
-			}
-
-			KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-			kmf.init(keyStore, certPassword.toCharArray());
-
+			KeyManagerFactory kmf = getKeyManagerFactory(config, false);
 			keyManagers = kmf.getKeyManagers();
 		}
 
 		TrustManager[] trustManagers = null;
 		if (configMode == RestSSLContextConfigMode.CLIENT || configMode == RestSSLContextConfigMode.MUTUAL) {
-			String trustStoreFilePath = getAndCheckOption(
-				config, SecurityOptions.SSL_REST_TRUSTSTORE, SecurityOptions.SSL_TRUSTSTORE);
-
-			String trustStorePassword = getAndCheckOption(
-				config, SecurityOptions.SSL_REST_TRUSTSTORE_PASSWORD, SecurityOptions.SSL_TRUSTSTORE_PASSWORD);
-
-			KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-			try (InputStream trustStoreFile = Files.newInputStream(new File(trustStoreFilePath).toPath())) {
-				trustStore.load(trustStoreFile, trustStorePassword.toCharArray());
-			}
-
-			TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-			tmf.init(trustStore);
-
+			TrustManagerFactory tmf = getTrustManagerFactory(config, false);
 			trustManagers = tmf.getTrustManagers();
 		}
 
