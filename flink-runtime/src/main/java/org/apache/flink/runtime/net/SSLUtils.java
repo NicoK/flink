@@ -27,6 +27,7 @@ import org.apache.flink.runtime.io.network.netty.SSLHandlerFactory;
 
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.ClientAuth;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.JdkSslContext;
+import org.apache.flink.shaded.netty4.io.netty.handler.ssl.OpenSsl;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslContext;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslContextBuilder;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider;
@@ -54,6 +55,8 @@ import java.security.cert.CertificateException;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider.JDK;
+import static org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider.OPENSSL;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -195,6 +198,22 @@ public class SSLUtils {
 		return config.getString(SecurityOptions.SSL_ALGORITHMS).split(",");
 	}
 
+	private static SslProvider getSSLProvider(final Configuration config) {
+		checkNotNull(config, "config must not be null");
+		String providerString = config.getString(SecurityOptions.SSL_PROVIDER);
+		if (providerString.equalsIgnoreCase("OPENSSL")) {
+			if (OpenSsl.isAvailable()) {
+				return OPENSSL;
+			} else {
+				return JDK;
+			}
+		} else if (providerString.equalsIgnoreCase("JDK")) {
+			return JDK;
+		} else {
+			throw new IllegalArgumentException("Unknown SSL provider: " + providerString);
+		}
+	}
+
 	private static TrustManagerFactory getTrustManagerFactory(Configuration config, boolean internal)
 			throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException {
 		String trustStoreFilePath = getAndCheckOption(
@@ -258,7 +277,7 @@ public class SSLUtils {
 	@Nullable
 	private static SSLContext createInternalSSLContext(Configuration config, boolean clientMode) throws Exception {
 		JdkSslContext nettySSLContext =
-			(JdkSslContext) createInternalNettySSLContext(config, clientMode, SslProvider.JDK);
+			(JdkSslContext) createInternalNettySSLContext(config, clientMode, JDK);
 		if (nettySSLContext != null) {
 			return nettySSLContext.context();
 		} else {
@@ -269,7 +288,7 @@ public class SSLUtils {
 	@Nullable
 	private static SslContext createInternalNettySSLContext(Configuration config, boolean clientMode)
 			throws Exception {
-		return createInternalNettySSLContext(config, clientMode, SslProvider.JDK);
+		return createInternalNettySSLContext(config, clientMode, getSSLProvider(config));
 	}
 
 	/**
@@ -322,7 +341,7 @@ public class SSLUtils {
 	public static SSLContext createRestSSLContext(Configuration config, boolean clientMode) throws Exception {
 		ClientAuth clientAuth = isRestSSLAuthenticationEnabled(config) ? ClientAuth.REQUIRE : ClientAuth.NONE;
 		JdkSslContext nettySSLContext =
-			(JdkSslContext) createRestNettySSLContext(config, clientMode, clientAuth, SslProvider.JDK);
+			(JdkSslContext) createRestNettySSLContext(config, clientMode, clientAuth, JDK);
 		if (nettySSLContext != null) {
 			return nettySSLContext.context();
 		} else {
@@ -334,7 +353,7 @@ public class SSLUtils {
 	private static SslContext createRestNettySSLContext(
 			Configuration config, boolean clientMode, ClientAuth clientAuth)
 			throws Exception {
-		return createRestNettySSLContext(config, clientMode, clientAuth, SslProvider.JDK);
+		return createRestNettySSLContext(config, clientMode, clientAuth, getSSLProvider(config));
 	}
 
 	/**
