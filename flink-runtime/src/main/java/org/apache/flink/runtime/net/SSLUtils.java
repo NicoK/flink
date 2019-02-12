@@ -28,6 +28,7 @@ import org.apache.flink.runtime.io.network.netty.SSLHandlerFactory;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.ClientAuth;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.JdkSslContext;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.OpenSsl;
+import org.apache.flink.shaded.netty4.io.netty.handler.ssl.OpenSslX509KeyManagerFactory;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslContext;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslContextBuilder;
 import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider;
@@ -57,6 +58,7 @@ import java.util.List;
 
 import static org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider.JDK;
 import static org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider.OPENSSL;
+import static org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider.OPENSSL_REFCNT;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -240,7 +242,10 @@ public class SSLUtils {
 		return tmf;
 	}
 
-	private static KeyManagerFactory getKeyManagerFactory(Configuration config, boolean internal)
+	private static KeyManagerFactory getKeyManagerFactory(
+			Configuration config,
+			boolean internal,
+			SslProvider provider)
 			throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException,
 			UnrecoverableKeyException {
 		String keystoreFilePath = getAndCheckOption(
@@ -263,8 +268,12 @@ public class SSLUtils {
 			keyStore.load(keyStoreFile, keystorePassword.toCharArray());
 		}
 
-		KeyManagerFactory kmf =
-			KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+		final KeyManagerFactory kmf;
+		if (provider == OPENSSL || provider == OPENSSL_REFCNT) {
+			kmf = new OpenSslX509KeyManagerFactory();
+		} else {
+			kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+		}
 		kmf.init(keyStore, certPassword.toCharArray());
 
 		return kmf;
@@ -312,7 +321,7 @@ public class SSLUtils {
 		int sessionCacheSize = config.getInteger(SecurityOptions.SSL_INTERNAL_SESSION_CACHE_SIZE);
 		int sessionTimeoutMs = config.getInteger(SecurityOptions.SSL_INTERNAL_SESSION_TIMEOUT);
 
-		KeyManagerFactory kmf = getKeyManagerFactory(config, true);
+		KeyManagerFactory kmf = getKeyManagerFactory(config, true, provider);
 		TrustManagerFactory tmf = getTrustManagerFactory(config, true);
 		ClientAuth clientAuth = ClientAuth.REQUIRE;
 
@@ -377,11 +386,11 @@ public class SSLUtils {
 		if (clientMode) {
 			sslContextBuilder = SslContextBuilder.forClient();
 			if (clientAuth != ClientAuth.NONE) {
-				KeyManagerFactory kmf = getKeyManagerFactory(config, false);
+				KeyManagerFactory kmf = getKeyManagerFactory(config, false, provider);
 				sslContextBuilder.keyManager(kmf);
 			}
 		} else {
-			KeyManagerFactory kmf = getKeyManagerFactory(config, false);
+			KeyManagerFactory kmf = getKeyManagerFactory(config, false, provider);
 			sslContextBuilder = SslContextBuilder.forServer(kmf);
 		}
 
