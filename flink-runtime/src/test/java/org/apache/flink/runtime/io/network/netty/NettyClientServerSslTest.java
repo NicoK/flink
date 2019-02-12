@@ -34,10 +34,13 @@ import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslHandler;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import javax.net.ssl.SSLSessionContext;
 
 import java.net.InetAddress;
+import java.util.List;
 
 import static org.apache.flink.configuration.SecurityOptions.SSL_INTERNAL_CLOSE_NOTIFY_FLUSH_TIMEOUT;
 import static org.apache.flink.configuration.SecurityOptions.SSL_INTERNAL_HANDSHAKE_TIMEOUT;
@@ -52,7 +55,16 @@ import static org.junit.Assert.assertTrue;
  * Tests for the SSL connection between Netty Server and Client used for the
  * data plane.
  */
+@RunWith(Parameterized.class)
 public class NettyClientServerSslTest extends TestLogger {
+
+	@Parameterized.Parameter
+	public String sslProvider;
+
+	@Parameterized.Parameters(name = "SSL provider = {0}")
+	public static List<String> parameters() {
+		return SSLUtilsTest.AVAILABLE_SSL_PROVIDERS;
+	}
 
 	/**
 	 * Verify valid ssl configuration and connection.
@@ -96,6 +108,7 @@ public class NettyClientServerSslTest extends TestLogger {
 		// session context is only be available after a session was setup -> this should be true after data was sent
 		SSLSessionContext sessionContext = sslHandler.engine().getSession().getSessionContext();
 		assertNotNull("bug in unit test setup: session context not available", sessionContext);
+		// TODO: sessionContext is from the client side which may not have a session cache at all (with openSSL it behaves that way)
 		assertEqualsOrDefault(sslConfig, SSL_INTERNAL_SESSION_CACHE_SIZE, sessionContext.getSessionCacheSize());
 		int sessionTimeout = sslConfig.getInteger(SSL_INTERNAL_SESSION_TIMEOUT);
 		if (sessionTimeout != -1) {
@@ -194,8 +207,8 @@ public class NettyClientServerSslTest extends TestLogger {
 		NettyTestUtil.shutdown(serverAndClient);
 	}
 
-	private static Configuration createSslConfig() {
-		return SSLUtilsTest.createInternalSslConfigWithKeyAndTrustStores();
+	private Configuration createSslConfig() {
+		return SSLUtilsTest.createInternalSslConfigWithKeyAndTrustStores(sslProvider);
 	}
 
 	private static NettyConfig createNettyConfig(Configuration config) {

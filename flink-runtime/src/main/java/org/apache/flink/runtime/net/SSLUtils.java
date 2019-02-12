@@ -198,7 +198,8 @@ public class SSLUtils {
 		return config.getString(SecurityOptions.SSL_ALGORITHMS).split(",");
 	}
 
-	private static SslProvider getSSLProvider(final Configuration config) {
+	@VisibleForTesting
+	static SslProvider getSSLProvider(final Configuration config) {
 		checkNotNull(config, "config must not be null");
 		String providerString = config.getString(SecurityOptions.SSL_PROVIDER);
 		if (providerString.equalsIgnoreCase("OPENSSL")) {
