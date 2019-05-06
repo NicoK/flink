@@ -207,12 +207,12 @@ public class SSLUtils {
 			if (OpenSsl.isAvailable()) {
 				return OPENSSL;
 			} else {
-				return JDK;
+				throw new IllegalConfigurationException("openSSL not available", OpenSsl.unavailabilityCause());
 			}
 		} else if (providerString.equalsIgnoreCase("JDK")) {
 			return JDK;
 		} else {
-			throw new IllegalArgumentException("Unknown SSL provider: " + providerString);
+			throw new IllegalConfigurationException("Unknown SSL provider: %s", providerString);
 		}
 	}
 

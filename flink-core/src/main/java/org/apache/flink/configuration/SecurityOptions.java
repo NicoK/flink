@@ -310,8 +310,8 @@ public class SecurityOptions {
 					.text("The SSL engine provider to use for the ssl transport:")
 					.list(
 						TextElement.text("%s: default Java-based SSL engine", TextElement.code("JDK")),
-						TextElement.text("%s: openSSL-based SSL engine using system libraries"
-							+ " (falls back to JDK if not available)", TextElement.code("OPENSSL"))
+						TextElement.text("%s: openSSL-based SSL engine using system libraries",
+							TextElement.code("OPENSSL"))
 					)
 					.text("Please note: OPENSSL requires a custom build of %s in our " +
 						"shaded package namespace which is not (yet) available but can be built manually (see %s).",
