@@ -57,7 +57,7 @@ MVN_TEST_MODULES=$(get_test_modules_for_stage ${TEST})
 MVN_LOGGING_OPTIONS="-Dlog.dir=${ARTIFACTS_DIR} -Dlog4j.configuration=file://$LOG4J_PROPERTIES -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
 MVN_COMMON_OPTIONS="-nsu -Dflink.forkCount=2 -Dflink.forkCountTestPackage=2 -Dfast -B -Pskip-webui-build $MVN_LOGGING_OPTIONS"
 MVN_COMPILE_OPTIONS="-DskipTests"
-MVN_TEST_OPTIONS="$MVN_LOGGING_OPTIONS"
+MVN_TEST_OPTIONS="$MVN_LOGGING_OPTIONS -Dflink.tests.force-openssl"
 
 MVN_COMPILE="mvn $MVN_COMMON_OPTIONS $MVN_COMPILE_OPTIONS $PROFILE $MVN_COMPILE_MODULES install"
 MVN_TEST="mvn $MVN_COMMON_OPTIONS $MVN_TEST_OPTIONS $PROFILE $MVN_TEST_MODULES verify"
@@ -191,6 +191,14 @@ echo "STARTED watchdog (${WD_PID})."
 
 # Make sure to be in project root
 cd $HERE/../
+
+echo "INSTALLING patched flink-shaded"
+git clone https://github.com/NicoK/flink-shaded.git
+cd flink-shaded
+git checkout flink-9816.all-6.0
+mvn clean install -Pinclude-netty-tcnative-static
+cd ..
+rm -rf flink-shaded
 
 # Compile modules
 

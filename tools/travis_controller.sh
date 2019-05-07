@@ -90,6 +90,15 @@ EXIT_CODE=0
 
 # Run actual compile&test steps
 if [ $STAGE == "$STAGE_COMPILE" ]; then
+
+	echo "INSTALLING patched flink-shaded"
+	git clone https://github.com/NicoK/flink-shaded.git
+	cd flink-shaded
+	git checkout flink-9816.all-6.0
+	mvn clean install -Pinclude-netty-tcnative-static
+	cd ..
+	rm -rf flink-shaded
+
 	MVN="mvn clean install -nsu -Dflink.convergence.phase=install -Pcheck-convergence -Dflink.forkCount=2 -Dflink.forkCountTestPackage=2 -Dmaven.javadoc.skip=true -B -DskipTests $PROFILE"
 	$MVN
 	EXIT_CODE=$?
