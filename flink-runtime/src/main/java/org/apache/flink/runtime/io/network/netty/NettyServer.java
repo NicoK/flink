@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 
 import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -38,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -65,6 +67,13 @@ class NettyServer {
 	}
 
 	void init(final NettyProtocol protocol, NettyBufferPool nettyBufferPool) throws IOException {
+		init(nettyBufferPool,
+			sslHandlerFactory -> new ServerChannelInitializer(protocol, sslHandlerFactory));
+	}
+
+	void init(
+		NettyBufferPool nettyBufferPool,
+		Function<SSLHandlerFactory, ServerChannelInitializer> channelInitializer) throws IOException {
 		checkState(bootstrap == null, "Netty server has already been initialized.");
 
 		final long start = System.nanoTime();
@@ -143,17 +152,7 @@ class NettyServer {
 		// Child channel pipeline for accepted connections
 		// --------------------------------------------------------------------
 
-		bootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
-			@Override
-			public void initChannel(SocketChannel channel) throws Exception {
-				if (sslHandlerFactory != null) {
-					channel.pipeline().addLast("ssl",
-						sslHandlerFactory.createNettySSLHandler(channel.alloc()));
-				}
-
-				channel.pipeline().addLast(protocol.getServerChannelHandlers());
-			}
-		});
+		bootstrap.childHandler(channelInitializer.apply(sslHandlerFactory));
 
 		// --------------------------------------------------------------------
 		// Start Server
@@ -216,5 +215,27 @@ class NettyServer {
 
 	public static ThreadFactory getNamedThreadFactory(String name) {
 		return THREAD_FACTORY_BUILDER.setNameFormat(name + " Thread %d").build();
+	}
+
+	@VisibleForTesting
+	static class ServerChannelInitializer extends ChannelInitializer<SocketChannel> {
+		private final NettyProtocol protocol;
+		private final SSLHandlerFactory sslHandlerFactory;
+
+		public ServerChannelInitializer(
+			NettyProtocol protocol, SSLHandlerFactory sslHandlerFactory) {
+			this.protocol = protocol;
+			this.sslHandlerFactory = sslHandlerFactory;
+		}
+
+		@Override
+		public void initChannel(SocketChannel channel) throws Exception {
+			if (sslHandlerFactory != null) {
+				channel.pipeline().addLast("ssl",
+					sslHandlerFactory.createNettySSLHandler(channel.alloc()));
+			}
+
+			channel.pipeline().addLast(protocol.getServerChannelHandlers());
+		}
 	}
 }
