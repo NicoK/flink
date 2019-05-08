@@ -95,7 +95,7 @@ if [ $STAGE == "$STAGE_COMPILE" ]; then
 	git clone https://github.com/NicoK/flink-shaded.git
 	cd flink-shaded
 	git checkout flink-9816.all-6.0
-	mvn clean install -Pinclude-netty-tcnative-static
+	mvn clean install
 	cd ..
 	rm -rf flink-shaded
 

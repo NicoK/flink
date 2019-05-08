@@ -279,7 +279,7 @@ under the License.
 
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-shaded-netty-tcnative-static</artifactId>
+			<artifactId>flink-shaded-netty-tcnative-dynamic</artifactId>
 			<scope>test</scope>
 		</dependency>
 
