@@ -90,6 +90,15 @@ EXIT_CODE=0
 
 # Run actual compile&test steps
 if [ $STAGE == "$STAGE_COMPILE" ]; then
+    # temporarily pull from a newer flink-shaded version
+    echo "RUNNING flink-shaded"
+    git clone https://github.com/NicoK/flink-shaded.git
+    cd flink-shaded
+    git checkout f13770
+    mvn clean install -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
+    cd ..
+    rm -rf flink-shaded
+
 	MVN="mvn clean install -nsu -Dflink.convergence.phase=install -Pcheck-convergence -Dflink.forkCount=2 -Dflink.forkCountTestPackage=2 -Dmaven.javadoc.skip=true -B -DskipTests -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn $PROFILE"
 	$MVN
 	EXIT_CODE=$?

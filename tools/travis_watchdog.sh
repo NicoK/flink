@@ -212,6 +212,15 @@ echo "STARTED watchdog (${WD_PID})."
 # Make sure to be in project root
 cd $HERE/../
 
+# temporarily pull from a newer flink-shaded version
+echo "RUNNING flink-shaded"
+git clone https://github.com/NicoK/flink-shaded.git
+cd flink-shaded
+git checkout f13770
+mvn $MVN_COMMON_OPTIONS clean install
+cd ..
+rm -rf flink-shaded
+
 # Compile modules
 
 echo "RUNNING '${CMD}'."
