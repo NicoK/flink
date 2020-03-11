@@ -847,6 +847,25 @@ public abstract class MemorySegment {
 	}
 
 	/**
+	 * Reads a long value (64bit, 8 bytes) from the given position, in the system's native byte order,
+	 * without verifying the index position is valid.
+	 * This method offers the best speed for long integer reading and should be used
+	 * unless a specific byte order is required. In most cases, it suffices to know that the
+	 * byte order in which the value is written is the same as the one in which it is read
+	 * (such as transient storage in memory, or serialization for I/O and network), making this
+	 * method the preferable choice.
+	 *
+	 * @param index The position from which the value will be read.
+	 * @return The long value at the given position.
+	 *
+	 * @see #checkIndex(int, int) for verifying that the index is valid
+	 */
+	private long getLongUnchecked(int index) {
+		final long pos = address + index;
+		return UNSAFE.getLong(heapMemory, pos);
+	}
+
+	/**
 	 * Reads a long integer value (64bit, 8 bytes) from the given position, in little endian byte order.
 	 * This method's speed depends on the system's native byte order, and it
 	 * is possibly slower than {@link #getLong(int)}. For most cases (such as
@@ -1423,26 +1442,61 @@ public abstract class MemorySegment {
 	 * @return true if equal, false otherwise
 	 */
 	public final boolean equalTo(MemorySegment seg2, int offset1, int offset2, int length) {
-		int i = 0;
+		if (length <= 0) {
+			return true;
+		}
+
+		final int end1 = offset1 + length - 8;
+		final int end2 = offset1 + length;
+
+		// check boundaries once (assume that if start and end are ok, the rest is, too):
+		checkIndex(offset1, 1);
+		checkIndex(end2 - 1, 1);
+		seg2.checkIndex(offset2, 1);
+		seg2.checkIndex(offset2 + length - 1, 1);
 
 		// we assume unaligned accesses are supported.
 		// Compare 8 bytes at a time.
-		while (i <= length - 8) {
-			if (getLong(offset1 + i) != seg2.getLong(offset2 + i)) {
+		while (offset1 <= end1) {
+			if (getLongUnchecked(offset1) != seg2.getLongUnchecked(offset2)) {
 				return false;
 			}
-			i += 8;
+			offset1 += 8;
+			offset2 += 8;
 		}
 
 		// cover the last (length % 8) elements.
-		while (i < length) {
-			if (get(offset1 + i) != seg2.get(offset2 + i)) {
+		while (offset1 < end2) {
+			if (get(offset1) != seg2.get(offset2)) {
 				return false;
 			}
-			i += 1;
+			++offset1;
+			++offset2;
 		}
 
 		return true;
+	}
+
+	/**
+	 * Verifies that a given index is within bounds for the given size.
+	 *
+	 * @param index The position to verify.
+	 * @param typeSize The size of the value that you should be able to read.
+	 *
+	 * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger than the segment
+	 *                                   size minus 8.
+	 */
+	private void checkIndex(int index, int typeSize) {
+		final long pos = address + index;
+		if (index < 0 || pos > addressLimit - typeSize) {
+			if (address > addressLimit) {
+				throw new IllegalStateException("segment has been freed");
+			}
+			else {
+				// index is in fact invalid
+				throw new IndexOutOfBoundsException();
+			}
+		}
 	}
 
 	/**
