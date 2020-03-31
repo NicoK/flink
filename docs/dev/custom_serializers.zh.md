@@ -62,12 +62,12 @@ env.getConfig().addDefaultKryoSerializer(MyCustomType.class, TBaseSerializer.cla
 <dependency>
 	<groupId>com.twitter</groupId>
 	<artifactId>chill-thrift</artifactId>
-	<version>0.7.6</version>
+	<version>0.9.5</version>
 	<!-- exclusions for dependency conversion -->
 	<exclusions>
 		<exclusion>
-			<groupId>com.esotericsoftware.kryo</groupId>
-			<artifactId>kryo</artifactId>
+			<groupId>com.esotericsoftware</groupId>
+			<artifactId>kryo-shaded</artifactId>
 		</exclusion>
 	</exclusions>
 </dependency>
@@ -97,12 +97,12 @@ env.getConfig().addDefaultKryoSerializer(MyCustomType.class, TBaseSerializer.cla
 <dependency>
 	<groupId>com.twitter</groupId>
 	<artifactId>chill-protobuf</artifactId>
-	<version>0.7.6</version>
+	<version>0.9.5</version>
 	<!-- exclusions for dependency conversion -->
 	<exclusions>
 		<exclusion>
-			<groupId>com.esotericsoftware.kryo</groupId>
-			<artifactId>kryo</artifactId>
+			<groupId>com.esotericsoftware</groupId>
+			<artifactId>kryo-shaded</artifactId>
 		</exclusion>
 	</exclusions>
 </dependency>
