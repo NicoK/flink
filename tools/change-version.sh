@@ -17,8 +17,8 @@
 # limitations under the License.
 ################################################################################
 
-OLD="1.3-SNAPSHOT"
-NEW="1.4-SNAPSHOT"
+OLD="1.11-SNAPSHOT"
+NEW="1.11.1.nico.1"
 
 
 HERE=` basename "$PWD"`
