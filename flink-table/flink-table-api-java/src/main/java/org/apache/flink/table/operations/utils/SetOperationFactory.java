@@ -25,6 +25,7 @@ import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.operations.SetQueryOperation;
 import org.apache.flink.table.operations.SetQueryOperation.SetQueryOperationType;
+import org.apache.flink.table.types.DataType;
 
 import java.util.stream.IntStream;
 
@@ -80,10 +81,10 @@ final class SetOperationFactory {
 					rightFieldCount));
 		}
 
-		TypeInformation<?>[] leftFieldTypes = leftSchema.getFieldTypes();
-		TypeInformation<?>[] rightFieldTypes = rightSchema.getFieldTypes();
+		DataType[] leftFieldTypes = leftSchema.getFieldDataTypes();
+		DataType[] rightFieldTypes = rightSchema.getFieldDataTypes();
 		boolean sameSchema = IntStream.range(0, leftFieldCount)
-			.allMatch(idx -> leftFieldTypes[idx].equals(rightFieldTypes[idx]));
+			.allMatch(idx -> leftFieldTypes[idx].getLogicalType().equals(rightFieldTypes[idx].getLogicalType()));
 
 		if (!sameSchema) {
 			throw new ValidationException(
